@@ -150,3 +150,6 @@ fig*.py
 main.py
 .env
 .autoenv
+
+# Claude Code
+.claude/
