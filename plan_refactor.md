@@ -22,25 +22,29 @@ Strip pybaseflow down to a clean, focused Python package for running baseflow se
 ### Functions/code to remove
 
 **`separation.py`**
-- `separation()` — batch multi-station separator with `tqdm` loop, `df_sta` geospatial lookups, KGE return logic. This is the study's batch runner, not a separation algorithm. Remove entirely.
-- `single()` — orchestrator that couples all methods together with KGE evaluation, ice handling, and `strict_baseflow`. This is study comparison glue. Remove entirely.
-- `strict_baseflow()` — keep. Required by `recession_coefficient()`, which is used by 6 filter methods. Remove the `ice` parameter coupling to the thawed.npz data (already optional, just clean up).
-- `bn77()` and its helpers (`_estimate_recession_slope`, `_identify_recession_episodes`, `_eliminate_points`) — legitimate Brutsaert-Nieber recession analysis method. Keep but fix: `bn77()` passes 5 args to `_eliminate_points()` which expects 7 (missing `S` and `quantile` args). Rewrite to work correctly.
-- The `if __name__ == "__main__"` block at the bottom — test scaffold for `bn77`. Remove.
-- Duplicate `import numpy as np` and `from numba import njit, prange` statements mid-file (lines 429 and 796-797). Clean up.
+- `separation()` — batch multi-station separator with `tqdm` loop, `df_sta` geospatial lookups, KGE return logic. This is the study's batch runner, not a separation algorithm.
+- `single()` — orchestrator that couples all methods together with KGE evaluation, ice handling. This is study comparison glue.
+- The `if __name__ == "__main__"` block at the bottom — test scaffold for `bn77`.
+- Duplicate `import numpy as np` and `from numba import njit, prange` statements mid-file (lines 429 and 796-797).
 
 **`utils.py`**
-- `geo2imagexy()` — converts geographic coords to raster pixel coords for the thawed.npz lookup. Study-specific. Remove.
-- `exist_ice()` — ice period detection for the global study. Remove.
-- `kge()` — evaluation metric for comparing methods in the study. Remove.
-- `format_method()` — convenience for the `single()`/`separation()` orchestrators. Remove along with those functions.
-- `flow_duration_curve()` — utility that doesn't belong in a baseflow separation package. Remove (or move to a separate analysis/plotting package).
+- `geo2imagexy()` — converts geographic coords to raster pixel coords for the thawed.npz lookup. Study-specific.
+- `exist_ice()` — ice period detection for the global study.
+- `kge()` — evaluation metric for comparing methods in the study.
+- `format_method()` — convenience for the `single()`/`separation()` orchestrators.
+- `flow_duration_curve()` — utility that doesn't belong in a baseflow separation package (or move to a separate analysis/plotting package).
 
 **`estimate.py`**
-- `maxmium_BFI()` — estimates BFImax from annual data, used inside `single()` (currently commented out there). Keep only if Eckhardt filter is retained as a standalone function that needs a default BFImax estimator. Otherwise remove.
+- `maxmium_BFI()` — estimates BFImax from annual data, used inside `single()` (currently commented out there). Remove unless Eckhardt filter needs a default BFImax estimator.
 
 **`baseflow/plotting`** (note: this is a file, not a directory, and has no `.py` extension)
-- Remove. It imports `plotly` and `baseflow` in broken ways. Plotting can be reintroduced properly later.
+- Imports `plotly` and `baseflow` in broken ways. Plotting can be reintroduced properly later.
+
+### Functions to keep and clean up
+
+**`separation.py`**
+- `strict_baseflow()` — useful for a variety of applications. Required by `recession_coefficient()`, which is used by 6 filter methods. Clean up: remove the `ice` parameter coupling to the thawed.npz data (already optional).
+- `bn77()` and its helpers (`_estimate_recession_slope`, `_identify_recession_episodes`, `_eliminate_points`) — legitimate Brutsaert-Nieber recession analysis method with broad utility. Fix bug: `bn77()` passes 5 args to `_eliminate_points()` which expects 7 (missing `S` and `quantile` args). Rewrite to work correctly.
 
 **`__init__.py`**
 - Remove `example = Path(__file__).parent / 'example.csv'` line.
