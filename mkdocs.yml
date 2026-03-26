@@ -1,47 +1,31 @@
 site_name: pybaseflow
-site_description: A comprehensive Python toolkit for baseflow separation
-repo_url: https://github.com/njones61/pybaseflow
-
-theme:
-  name: material
-  palette:
-    - scheme: default
-      primary: blue
-      accent: light blue
-  features:
-    - navigation.sections
-    - navigation.expand
-    - content.code.copy
-    - toc.integrate
-
-markdown_extensions:
-  - admonition
-  - pymdownx.arithmatex:
-      generic: true
-  - pymdownx.highlight:
-      anchor_linenums: true
-  - pymdownx.superfences
-  - pymdownx.tabbed:
-      alternate_style: true
-  - tables
-  - attr_list
-  - md_in_html
-  - toc:
-      permalink: true
-
+site_url: https://pybaseflow.readthedocs.io/en/latest/
+site_description: Documentation for the pybaseflow Python Package
+site_author: Norm Jones
+repo_url: https://github.com/njones61/pybaseflow/
+copyright: Copyright &copy; 2025 Norman L. Jones. Licensed under MIT.
 extra_javascript:
-  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
-
+  - https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.0/es5/tex-mml-chtml.js
+  - js/mathjax-config.js
+markdown_extensions:
+    - attr_list
+    - sane_lists
+    - md_in_html
+    - admonition
+    - pymdownx.arithmatex:
+        generic: true
+theme: readthedocs
+extra_css:
+  - css/custom.css
 plugins:
   - search
   - mkdocstrings:
       handlers:
         python:
+          paths: ["."]
           options:
-            show_source: false
-            show_root_heading: true
-            heading_level: 3
-
+            docstring_style: google
+            show_signature_annotations: false
 nav:
   - Home: index.md
   - Installation: installation.md
