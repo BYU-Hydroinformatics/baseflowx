@@ -288,6 +288,45 @@ def willems(Q, a, w, initial_method='Q0', return_exceed=False):
 
 
 # ---------------------------------------------------------------------------
+# Recursive digital filters — variable gamma (hybrid)
+# ---------------------------------------------------------------------------
+
+def ihacres(Q, a, C, alpha_s, initial_method='Q0', return_exceed=False):
+    """Jakeman-Hornberger / IHACRES baseflow filter (Jakeman & Hornberger, 1993).
+
+    b[t] = a/(1+C) * b[t-1] + C/(1+C) * (Q[t] + alpha_s * Q[t-1])
+
+    Three-parameter extension of the Boughton filter. When alpha_s = 0,
+    reduces exactly to boughton(). The alpha_s term adds dependence on
+    the previous timestep's total flow, accounting for delayed baseflow
+    response.
+
+    In the generalized filter taxonomy: alpha = a/(1+C), beta = C/(1+C),
+    gamma = alpha_s. This filter occupies the continuum between the
+    gamma=0 and gamma=1 families.
+
+    Jakeman, A.J. and Hornberger, G.M. (1993) How much complexity is
+    warranted in a rainfall-runoff model? Water Resour. Res. 29(8),
+    2637-2649.
+
+    Args:
+        Q (numpy.ndarray): Streamflow.
+        a (float): Recession coefficient for slow flow (0.9-0.999).
+        C (float): Partitioning parameter (0.1-1.0).
+        alpha_s (float): Previous-timestep dependence (-0.99 to 0).
+            Set to 0 to recover the Boughton filter.
+        initial_method (str or float): Method to set b[0]. Default 'Q0'.
+        return_exceed (bool): If True, append exceed count.
+
+    Returns:
+        numpy.ndarray: Baseflow.
+    """
+    return _recursive_digital_filter(
+        Q, alpha=a / (1 + C), beta=C / (1 + C), gamma=alpha_s,
+        initial_method=initial_method, return_exceed=return_exceed)
+
+
+# ---------------------------------------------------------------------------
 # Lyne-Hollick filter (single-pass and multi-pass)
 # ---------------------------------------------------------------------------
 
@@ -557,6 +596,157 @@ def _linear_interpolation(Q, idx_turn, return_exceed=False):
             b[i] = Q[i]
             if return_exceed:
                 b[-1] += 1
+    return b
+
+
+# ---------------------------------------------------------------------------
+# PART method (Rutledge, 1998)
+# ---------------------------------------------------------------------------
+
+def part(Q, area, log_cycle_threshold=0.1):
+    """PART baseflow separation (Rutledge, 1998).
+
+    Recession-based graphical method that identifies days where streamflow
+    equals baseflow using an antecedent recession requirement, then
+    interpolates in log-space between qualifying days.
+
+    The procedure is run three times with different recession durations
+    (floor(N), ceil(N), ceil(N)+1) and combined via linear interpolation
+    evaluated at the exact N = A^0.2.
+
+    Rutledge, A.T. (1998) Computer programs for describing the recession of
+    ground-water discharge and for estimating mean ground-water recharge and
+    discharge from streamflow records — Update. USGS WRI 98-4148.
+
+    Args:
+        Q (numpy.ndarray): Daily streamflow.
+        area (float): Drainage area in km^2.
+        log_cycle_threshold (float): Maximum daily log10 decline for a
+            qualifying day. Default 0.1.
+
+    Returns:
+        numpy.ndarray: Daily baseflow array.
+    """
+    # Compute real-valued N (days of antecedent recession)
+    area_sqmi = 0.3861022 * area
+    N_real = area_sqmi ** 0.2
+
+    N_floor = max(int(np.floor(N_real)), 1)
+    N_ceil = max(int(np.ceil(N_real)), 2)
+    if N_ceil == N_floor:
+        N_ceil = N_floor + 1
+    N_values = [N_floor, N_ceil, N_ceil + 1]
+
+    results = []
+    for N in N_values:
+        b = _part_single(Q, N, log_cycle_threshold)
+        results.append(b)
+
+    # Linear interpolation between floor and ceil results
+    if N_ceil > N_floor:
+        frac = (N_real - N_floor) / (N_ceil - N_floor)
+    else:
+        frac = 0.0
+    b_out = results[0] * (1 - frac) + results[1] * frac
+
+    return b_out
+
+
+def _part_single(Q, N, log_cycle_threshold):
+    """Run the PART procedure for a single value of N."""
+    n = len(Q)
+    eps = 1e-99  # avoid log(0)
+    Q_safe = np.where(Q > 0, Q, eps)
+    logQ = np.log10(Q_safe)
+
+    # Step 1: identify qualifying days (antecedent recession for N days)
+    is_gw = np.zeros(n, dtype=bool)
+    for t in range(N, n):
+        recession = True
+        for j in range(t - N, t):
+            if Q_safe[j] < Q_safe[j + 1]:
+                recession = False
+                break
+        if recession:
+            is_gw[t] = True
+
+    # Step 2: apply log-cycle check — disqualify if followed by steep decline
+    for t in range(n - 1):
+        if is_gw[t]:
+            if logQ[t] - logQ[t + 1] > log_cycle_threshold:
+                is_gw[t] = False
+
+    # Step 3: iterative log-linear interpolation with correction
+    b = np.zeros(n)
+    b = _part_interpolate(Q_safe, logQ, is_gw, b)
+
+    # Cap small values to zero
+    b[b < 1e-6] = 0.0
+    return b
+
+
+def _part_interpolate(Q, logQ, is_gw, b):
+    """Log-linear interpolation with iterative correction."""
+    n = len(Q)
+    is_anchor = is_gw.copy()
+
+    for _iteration in range(n):  # convergence guaranteed
+        # Set baseflow at anchor points
+        b[:] = 0.0
+        anchor_indices = np.where(is_anchor)[0]
+
+        if len(anchor_indices) == 0:
+            b[:] = Q[:]
+            return b
+
+        # Constant extrapolation at edges
+        if anchor_indices[0] > 0:
+            b[:anchor_indices[0]] = Q[anchor_indices[0]]
+        if anchor_indices[-1] < n - 1:
+            b[anchor_indices[-1] + 1:] = Q[anchor_indices[-1]]
+
+        # Set anchor values
+        for idx in anchor_indices:
+            b[idx] = Q[idx]
+
+        # Log-linear interpolation between anchors
+        for k in range(len(anchor_indices) - 1):
+            i0 = anchor_indices[k]
+            i1 = anchor_indices[k + 1]
+            if i1 - i0 <= 1:
+                continue
+            log_b0 = logQ[i0]
+            log_b1 = logQ[i1]
+            for t in range(i0 + 1, i1):
+                frac = (t - i0) / (i1 - i0)
+                b[t] = 10.0 ** (log_b0 + frac * (log_b1 - log_b0))
+
+        # Check for violations (baseflow > streamflow)
+        violations = np.where((b > Q) & ~is_anchor)[0]
+        if len(violations) == 0:
+            break
+
+        # Find worst violation in each inter-anchor interval
+        new_anchors = []
+        for k in range(len(anchor_indices) - 1):
+            i0 = anchor_indices[k]
+            i1 = anchor_indices[k + 1]
+            mask = (violations >= i0) & (violations <= i1)
+            interval_violations = violations[mask]
+            if len(interval_violations) > 0:
+                log_excess = np.log10(np.maximum(b[interval_violations], 1e-99)) - \
+                             logQ[interval_violations]
+                worst = interval_violations[np.argmax(log_excess)]
+                new_anchors.append(worst)
+
+        if not new_anchors:
+            break
+
+        for idx in new_anchors:
+            is_anchor[idx] = True
+
+    # Final cap: baseflow cannot exceed streamflow
+    b = np.minimum(b, Q)
     return b
 
 

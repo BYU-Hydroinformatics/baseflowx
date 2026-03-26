@@ -11,6 +11,7 @@ import numpy as np
 from pybaseflow.separation import *  # noqa: F401,F403
 from pybaseflow.estimate import *  # noqa: F401,F403
 from pybaseflow.utils import *  # noqa: F401,F403
+from pybaseflow.tracer import cmb, estimate_endmembers, calibrate_eckhardt_from_cmb  # noqa: F401
 
 _DATA_DIR = Path(__file__).parent / 'data'
 

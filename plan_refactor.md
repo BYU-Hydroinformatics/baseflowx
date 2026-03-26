@@ -15,9 +15,9 @@ Strip pybaseflow down to a clean, focused Python package for running baseflow se
 | `baseflow/read_npz.py` | Only reads `thawed.npz`, a study artifact |
 | `baseflow/thawed.npz` | Global thaw/freeze raster data used in the study |
 | `baseflow/example.csv` | Study-specific example stations; replaced with new sample data in Phase 4 |
-| `docs/` (entire folder) | Will be rebuilt from scratch in Phase 6 |
-| `mkdocs.yml` | Old docs config; replaced in Phase 6 |
-| `readthedocs.yml` | Old docs config; replaced in Phase 6 |
+| `docs/` (entire folder) | Will be rebuilt from scratch in Phase 5 |
+| `mkdocs.yml` | Old docs config; replaced in Phase 5 |
+| `readthedocs.yml` | Old docs config; replaced in Phase 5 |
 
 ### Functions/code to remove
 
@@ -58,7 +58,7 @@ Strip pybaseflow down to a clean, focused Python package for running baseflow se
 
 ---
 
-## Phase 2: Clean Up the Separation Methods
+## Phase 2: Clean Up Separation Methods and Supporting Modules
 
 ### What stays (the core algorithms)
 
@@ -98,10 +98,6 @@ These are all legitimate, published baseflow separation methods:
 
 7. **`numba` dependency** — several functions use `@njit`. Consider whether the performance gain justifies the dependency for typical use cases (single hydrograph). Could offer numba as optional. Low priority.
 
----
-
-## Phase 3: Clean Up Supporting Modules
-
 ### `estimate.py` — keep and simplify
 
 - `recession_coefficient()` — needed by Chapman, CM, Boughton, Furey, Eckhardt, Willems. Keep.
@@ -118,7 +114,7 @@ After removals, what remains:
 
 ---
 
-## Phase 4: Modernize Packaging
+## Phase 3: Modernize Packaging
 
 1. Replace `setup.py` with `pyproject.toml`.
 2. Rename package to `pybaseflow` (both the directory and the pip install name).
@@ -144,28 +140,18 @@ After removals, what remains:
      data = fetch_usgs('01013500', '2015-01-01', '2020-12-31')
      b = pybaseflow.eckhardt(data['Q'], a=0.98, BFImax=0.8)
      ```
+8. **User-facing API** — individual method functions are the primary API, accessible from the top-level namespace via wildcard imports:
+   ```python
+   import pybaseflow
+   baseflow = pybaseflow.eckhardt(Q, a=0.98, BFImax=0.8)
+
+   # Or import directly
+   from pybaseflow.separation import lh, chapman, eckhardt
+   ```
 
 ---
 
-## Phase 5: Add a Simple User-Facing API
-
-Create a clean top-level function that replaces the removed `single()`/`separation()`:
-
-```python
-import pybaseflow
-
-# Run a single method
-baseflow = pybaseflow.eckhardt(Q, a=0.98, BFImax=0.8)
-
-# Or use individual functions directly
-from pybaseflow.separation import lh, chapman, eckhardt
-```
-
-The individual method functions should be the primary API. A convenience wrapper could be added later but is not essential.
-
----
-
-## Phase 6: Baseflow Separation Methods to Add
+## Phase 4: Add New Methods
 
 Detailed research into each candidate method, with findings that inform implementation priority and approach.
 
@@ -212,7 +198,7 @@ References:
 
 ---
 
-### 6.1 Nathan-McMahon (1990) — ALREADY IMPLEMENTED
+### 4.1 Nathan-McMahon (1990) — ALREADY IMPLEMENTED
 
 **Reference:** Nathan, R.J. and McMahon, T.A. (1990). Evaluation of automated techniques for base flow and recession analyses. *Water Resources Research*, 26(7), 1465-1473.
 
@@ -231,7 +217,7 @@ This matches the existing `lh()` implementation exactly (separation.py line 535)
 
 ---
 
-### 6.2 Generalized Recursive Digital Filter Refactoring
+### 4.2 Generalized Recursive Digital Filter Refactoring
 
 **Reference:** Eckhardt, K. (2005, 2008) — see taxonomy section above.
 
@@ -254,7 +240,7 @@ This should be done as part of Phase 2 cleanup, not Phase 6.
 
 ---
 
-### 6.3 PART (Rutledge, 1998) — NEW, HIGH PRIORITY
+### 4.3 PART (Rutledge, 1998) — NEW, HIGH PRIORITY
 
 **Reference:** Rutledge, A.T. (1998). Computer programs for describing the recession of ground-water discharge and for estimating mean ground-water recharge and discharge from streamflow records — Update. *USGS Water-Resources Investigations Report 98-4148*.
 
@@ -325,7 +311,7 @@ Combine the three mean baseflow estimates using second-order polynomial (curvili
 
 ---
 
-### 6.4 BFlow (Arnold & Allen, 1999) — FILTER EXISTS, ADD RECESSION ANALYSIS
+### 4.4 BFlow (Arnold & Allen, 1999) — FILTER EXISTS, ADD RECESSION ANALYSIS
 
 **References:**
 - Arnold, J.G. and Allen, P.M. (1999). Automated methods for estimating baseflow and ground water recharge from streamflow records. *JAWRA*, 35(2), 411-424.
@@ -360,7 +346,7 @@ with `beta = 0.925` and 3 passes (forward-backward-forward). This is already cov
 
 ---
 
-### 6.5 Conductivity Mass Balance — CMB (Stewart et al., 2007) — NEW, HIGH PRIORITY
+### 4.5 Conductivity Mass Balance — CMB (Stewart et al., 2007) — NEW, HIGH PRIORITY
 
 **Reference:** Stewart, M.T., Cimino, J., and Ross, M. (2007). Calibration of base flow separation methods with streamflow conductivity. *Groundwater*, 45(1), 17-27.
 
@@ -437,7 +423,7 @@ Note: Zhang et al. (2021) found that while cumulative baseflow from calibrated E
 
 ---
 
-### 6.6 Jakeman-Hornberger / IHACRES (1993) — NEW, MEDIUM PRIORITY
+### 4.6 Jakeman-Hornberger / IHACRES (1993) — NEW, MEDIUM PRIORITY
 
 **Reference:** Jakeman, A.J. and Hornberger, G.M. (1993). How much complexity is warranted in a rainfall-runoff model? *Water Resources Research*, 29(8), 2637-2649.
 
@@ -482,7 +468,7 @@ This makes IHACRES unique — it is neither purely gamma=0 nor gamma=1, but occu
 
 ---
 
-### 6.7 Brutsaert-Nieber (1977) — BUG FIX, MEDIUM PRIORITY
+### 4.7 Brutsaert-Nieber (1977) — BUG FIX, MEDIUM PRIORITY
 
 **Reference:** Brutsaert, W. and Nieber, J.W. (1977). Regionalized drought flow hydrographs from a mature glaciated plateau. *Water Resources Research*, 13(3), 637-643.
 
@@ -515,7 +501,7 @@ After fixing the bug, review the full bn77 pipeline for correctness:
 
 ---
 
-### 6.8 HYSEP Sliding Verification — LOW PRIORITY
+### 4.8 HYSEP Sliding Verification — LOW PRIORITY
 
 **Reference:** Sloto, R.A. and Crouse, M.Y. (1996). HYSEP: A computer program for streamflow hydrograph separation and analysis. *USGS Water-Resources Investigations Report 96-4040*.
 
@@ -523,7 +509,7 @@ After fixing the bug, review the full bn77 pipeline for correctness:
 
 ---
 
-### 6.9 Constant-k (Blume et al., 2007) — LOW PRIORITY, LIKELY SKIP
+### 4.9 Constant-k (Blume et al., 2007) — LOW PRIORITY, LIKELY SKIP
 
 **Reference:** Blume, T., Zehe, E., and Bronstert, A. (2007). Rainfall-runoff response, event-based runoff coefficients and hydrograph separation. *Hydrological Sciences Journal*, 52(5), 843-862.
 
@@ -538,7 +524,7 @@ The event-detection complexity adds significant scope for marginal value — the
 
 ---
 
-### 6.10 Lower Priority / Future
+### 4.10 Lower Priority / Future
 
 | Method | Reference | Notes |
 |---|---|---|
@@ -573,7 +559,6 @@ The refactored pybaseflow package will offer methods spanning four distinct para
 | Method | Function | Parameters | Reference |
 |---|---|---|---|
 | Jakeman-Hornberger | `ihacres()` | a, C, alpha_s | Jakeman & Hornberger, 1993 |
-| HydRun | `hyd_run()` | (TBD) | (TBD) |
 
 ### Graphical / Recession-Based Methods
 | Method | Function | Parameters | Reference |
@@ -603,23 +588,28 @@ The refactored pybaseflow package will offer methods spanning four distinct para
 
 ---
 
-## Suggested Order of Work
+## Progress and Order of Work
 
-1. **Phase 1 — Delete** study-specific files and code
-2. **Phase 2-3 — Refactor** existing methods:
-   a. Implement `_recursive_digital_filter()` core (generalized RDF)
-   b. Convert existing filters to thin wrappers
-   c. Deduplicate `initial_method` and `return_exceed` boilerplate
-   d. Fix `bn77()` bug (missing `S` argument)
-   e. Verify `slide()` against HYSEP spec
-   f. Clean up estimate.py and utils.py
-3. **Phase 4 — Modernize** packaging (pyproject.toml, rename to pybaseflow)
-4. **Phase 5 — Add new methods** (highest impact first):
-   a. **PART** — new paradigm, widely used, no Python implementation exists
-   b. **CMB** + `calibrate_eckhardt_from_cmb()` — new paradigm, tracer-based, calibration bridge
-   c. **BFlow recession analysis** — SWAT interoperability, builds on existing lh_multi()
-   d. **IHACRES** — extends Boughton with one additional parameter
-5. **Phase 6 — Rebuild documentation from scratch**
+1. **Phase 1 — Delete study-specific code** ✓
+2. **Phase 2 — Refactor existing methods** ✓
+   - Implemented `_recursive_digital_filter()` core (generalized RDF)
+   - Converted existing filters to thin wrappers
+   - Extracted `_init_baseflow()` to deduplicate boilerplate
+   - Fixed `bn77()` bug (missing `S` argument)
+   - Removed `hyd_run()` (duplicate of `lh_multi()`)
+   - Made `what()` an alias for `eckhardt()`
+   - Prefixed internal helpers with `_`
+   - Cleaned up estimate.py and utils.py
+3. **Phase 3 — Modernize packaging** ✓
+   - Replaced `setup.py` with `pyproject.toml`
+   - Renamed package to `pybaseflow`
+   - Added `__version__`, sample data, `fetch_usgs()`, `load_sample_data()`
+4. **Phase 4 — Add new methods** ✓
+   - **PART** — Rutledge 1998 recession-based graphical method
+   - **CMB** + `calibrate_eckhardt_from_cmb()` — tracer-based separation in `tracer.py`
+   - **BFlow** recession analysis — `bflow()` and `bflow_recession_analysis()` for SWAT interop
+   - **IHACRES** — 3-parameter Boughton extension via `_recursive_digital_filter()`
+5. **Phase 5 — Rebuild documentation from scratch**
    a. **Docs infrastructure** — set up MkDocs with Material theme, `mkdocstrings` for auto-generated API reference, `pyproject.toml` integration, and GitHub Pages deployment
    b. **API reference** — auto-generate from docstrings; ensure every public function has a complete docstring with parameters, return type, equation, and literature reference
    c. **Method guide** — a narrative page for each method category (digital filters, graphical/recession, tracer-based) explaining the theory, when to use each method, and how they relate to each other; include the two-family filter taxonomy (gamma=0 vs gamma=1)
@@ -634,7 +624,7 @@ The refactored pybaseflow package will offer methods spanning four distinct para
    g. **Method comparison table** — a single reference page listing every method with its equation, parameters, type, reference, and recommended use case
    h. **Contributing guide** — how to add a new filter method using the `_recursive_digital_filter()` core
    i. **Unified notation** — consistent variable names across all docs (Q for streamflow, b for baseflow, a/k for recession coefficient, etc.)
-6. **Phase 7 — Journal article**
+6. **Phase 6 — Journal article**
    - Describing pybaseflow's scope, taxonomy, and implementation
    - Method comparison / benchmarking suite with real hydrograph data
    - Positioning relative to existing tools (USGS HYSEP, PART, BFlow, R packages)
