@@ -1,6 +1,6 @@
 """pybaseflow — a comprehensive Python toolkit for baseflow separation."""
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 import csv
 from datetime import date

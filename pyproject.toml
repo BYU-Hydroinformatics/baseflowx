@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
 authors = [
-    { name = "Nels Jones" },
+    { name = "Norm Jones" },
 ]
 classifiers = [
     "Programming Language :: Python",
