@@ -282,4 +282,30 @@ ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
 fig.autofmt_xdate()
 save(fig, 'recession_coefficient')
 
+# =========================================================================
+# 10. Brutsaert-Nieber (bn77) drought flow points
+# =========================================================================
+print("Generating bn77 figure...")
+
+from pybaseflow.separation import bn77
+
+drought_idx = bn77(Q, L_min=5, snow_freeze_period=(400, 450),
+                   observational_precision=0.1, quantile=0.9)
+
+fig, ax = plt.subplots()
+ax.plot(dates, Q, color='#333333', linewidth=0.6, label='Streamflow')
+if len(drought_idx) > 0:
+    drought_dates = dates[drought_idx.astype(int)]
+    drought_Q = Q[drought_idx.astype(int)]
+    ax.scatter(drought_dates, drought_Q, color='#2196F3', s=12, zorder=5,
+               edgecolors='#0D47A1', linewidths=0.3,
+               label=f'Drought flow points ({len(drought_idx)})')
+ax.set_ylabel('Discharge (ft$^3$/s)')
+ax.set_title('Brutsaert-Nieber drought flow identification (bn77)')
+ax.legend(loc='upper right', framealpha=0.9)
+ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+fig.autofmt_xdate()
+save(fig, 'bn77')
+
 print("\nAll figures generated.")

@@ -94,6 +94,8 @@ drought_points = bn77(
 
 The function returns a NumPy array of indices into the original discharge array. These indices identify the surviving drought flow points -- the subset of the record that the algorithm considers to be uncontaminated aquifer recession. Typical applications include fitting the Brutsaert-Nieber recession equation \(-dQ/dt = aQ^b\) to characterize aquifer nonlinearity, or simply verifying that a digital filter's baseflow track passes through these physically identified baseflow points.
 
+![Brutsaert-Nieber drought flow points identified on the Fish River hydrograph](../assets/figures/bn77.png)
+
 ## Strict baseflow identification
 
 The `strict_baseflow()` function provides a lighter-weight alternative for identifying recession-dominated periods. Rather than the full Brutsaert-Nieber elimination cascade, it applies a set of heuristic rules based on the hydrograph derivative to flag timesteps that are unambiguously part of a baseflow recession.
