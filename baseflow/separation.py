@@ -1,142 +1,6 @@
 import numpy as np
-import pandas as pd
-from tqdm import tqdm
 from numba import njit, prange
-from pathlib import Path
-from baseflow.utils import clean_streamflow, exist_ice, geo2imagexy, format_method
-from baseflow.estimate import recession_coefficient, param_calibrate, maxmium_BFI
 
-
-def single(series, area=None, ice=None, method='all', return_kge=True):
-    """
-    Calculates baseflow on a single station using multiple methods.
-
-    Args:
-        series (pandas.Series): The streamflow time series to separate.
-        area (float): The area of the basin in km^2.
-        ice (numpy.ndarray): INSERT DESCRIPTION.
-        method (callable): The baseflow estimation method to use.
-        return_kge (bool): If True, returns the KGE values for each method.
-
-    Returns:
-        pandas.DataFrame: The baseflow time series for each method.
-        pandas.Series: The KGE values for each method.
-    """
-    Q, date = clean_streamflow(series)
-    method = format_method(method)
-
-    # convert ice_period ([11, 1], [3, 31]) to bool array
-    # if not isinstance(ice, np.ndarray) or ice.shape[0] == 12:
-    #     ice = exist_ice(date, ice)
-    strict = strict_baseflow(Q, ice)
-    if any(m in ['Chapman', 'CM', 'Boughton', 'Furey', 'Eckhardt', 'Willems'] for m in method):
-        a = recession_coefficient(Q, strict)
-
-    b_LH = lh(Q)
-    b = pd.DataFrame(np.nan, index=date, columns=method)
-    for m in method:
-        if m == 'UKIH':
-            b[m] = ukih(Q, b_LH)
-
-        if m == 'Local':
-            b[m] = local(Q, b_LH)
-
-        if m == 'Fixed':
-            b[m] = fixed(Q, area)
-
-        if m == 'Slide':
-            b[m] = slide(Q, area)
-
-        if m == 'LH':
-            b[m] = b_LH
-
-        if m == 'Chapman':
-            b[m] = chapman(Q, a)
-
-        if m == 'CM':
-            b[m] = chapman_maxwell(Q, a)
-
-        if m == 'Boughton':
-            C = param_calibrate(np.arange(0.0001, 0.1, 0.0001), boughton, Q, b_LH, a)
-            b[m] = boughton(Q, a, C)
-
-        if m == 'Furey':
-            A = param_calibrate(np.arange(0.01, 10, 0.01), furey, Q, b_LH, a)
-            b[m] = furey(Q, a, A)
-
-        if m == 'Eckhardt':
-            # BFImax = maxmium_BFI(Q, b_LH, a, date)
-            BFImax = param_calibrate(np.arange(0.001, 1, 0.001), eckhardt, Q, b_LH, a)
-            b[m] = eckhardt(Q, a, BFImax)
-
-        if m == 'EWMA':
-            e = param_calibrate(np.arange(0.0001, 0.1, 0.0001), ewma, Q, b_LH, 0)
-            b[m] = ewma(Q, e)
-
-        if m == 'Willems':
-            w = param_calibrate(np.arange(0.001, 1, 0.001), willems, Q, b_LH, a)
-            b[m] = willems(Q, a, w)
-    if return_kge:
-        KGEs = pd.Series(return_kge(b[strict].values, np.repeat(
-            Q[strict], len(method)).reshape(-1, len(method))), index=b.columns)
-        return b, KGEs
-    else:
-        return b, None
-
-
-def separation(df, df_sta=None, method='all', return_bfi=False, return_kge=False):
-    # baseflow separation for multiple stations
-    def sep_work(s):
-        try:
-            # read area, longitude, latitude from df_sta
-            area, ice = None, None
-            # to_num = lambda col: (pd.to_numeric(df_sta.loc[s, col], errors='coerce')
-            #                       if (df_sta is not None) and (col in df_sta.columns) else np.nan)
-            # if np.isfinite(to_num('area')):
-            #     area = to_num('area')
-            # if np.isfinite(to_num('lon')):
-            #     c, r = geo2imagexy(to_num('lon'), to_num('lat'))
-            #     ice = ~thawed[:, r, c]
-            #     ice = ([11, 1], [3, 31]) if ice.all() else ice
-            # separate baseflow for station S
-            b, KGEs = single(df[s], ice=ice, area=area, method=method, return_kge=return_kge)
-            # write into already created dataframe
-            for m in method:
-                dfs[m].loc[b.index, s] = b[m]
-            if return_bfi:
-                df_bfi.loc[s] = b.sum() / df.loc[b.index, s].abs().sum()
-            if return_kge:
-                df_kge.loc[s] = KGEs
-        except BaseException:
-            pass
-
-    # convert index to datetime
-    if not isinstance(df.index, pd.DatetimeIndex):
-        df.index = pd.to_datetime(df.index)
-
-    # create df to store baseflow
-    method = format_method(method)
-    dfs = {m: pd.DataFrame(np.nan, index=df.index, columns=df.columns, dtype=float)
-           for m in method}
-
-    # create df to store BFI and KGE
-    if return_bfi:
-        df_bfi = pd.DataFrame(np.nan, index=df.columns, columns=method, dtype=float)
-    if return_kge:
-        df_kge = pd.DataFrame(np.nan, index=df.columns, columns=method, dtype=float)
-
-    # run separation for each column
-    for s in tqdm(df.columns, total=df.shape[1]):
-        sep_work(s)
-
-    # return result
-    if return_bfi and return_kge:
-        return dfs, df_bfi, df_kge
-    if return_bfi and not return_kge:
-        return dfs, df_bfi
-    if not return_bfi and return_kge:
-        return dfs, df_kge
-    return dfs
 
 def boughton(Q, a, C, initial_method='Q0', return_exceed=False):
     """
@@ -426,7 +290,6 @@ def furey(Q, a, A, initial_method='Q0', return_exceed=False):
                 b[-1] += 1
     return b
 
-import numpy as np
 
 def hyd_run(streamflow, k=0.9, passes=4):
     """
@@ -793,8 +656,6 @@ def strict_baseflow(Q, ice=None, quantile=0.9):
 
 
 
-import numpy as np
-from numba import njit, prange
 
 def bn77(Q, L_min, snow_freeze_period, observational_precision, quantile=0.9):
     """
@@ -933,27 +794,3 @@ def _eliminate_points(recession_episodes, L_min, snow_freeze_period, observation
         drought_flow_points.append(episode)
 
     return np.concatenate(drought_flow_points) if drought_flow_points else np.array([])
-
-# Example usage
-if __name__ == "__main__":
-    # Generate sample data
-    np.random.seed(42)
-    Q = np.random.rand(1000) * 100
-    
-    # Set parameters
-    L_min = 5
-    snow_freeze_period = (300, 400)
-    observational_precision = 0.1
-    quantile = 0.9
-    
-    # Estimate recession slope
-    S = _estimate_recession_slope(Q)
-    
-    # Identify recession episodes
-    recession_episodes = _identify_recession_episodes(S, L_min)
-    
-    # Eliminate points based on criteria
-    drought_points = _eliminate_points(recession_episodes, L_min, snow_freeze_period, observational_precision, Q, S, quantile)
-    
-    print(f"Number of drought flow points identified: {len(drought_points)}")
-    print(f"Indices of first 10 drought flow points: {drought_points[:10]}")
