@@ -2,7 +2,7 @@
 
 ## Goal
 
-Strip pybaseflow down to a clean, focused Python package for running baseflow separation algorithms on a hydrograph. Remove everything tied to the original paper's large-scale study (multi-station batch processing, geospatial ice lookups, KGE comparisons, bundled data files).
+Strip pybaseflow down to a clean, focused Python package for running baseflow separation algorithms on a hydrograph. Remove everything tied to the original paper's large-scale study (multi-station batch processing, geospatial ice lookups, KGE comparisons, bundled data files). The refactored package will serve as the basis for a journal article describing pybaseflow as a comprehensive, well-documented Python toolkit for baseflow separation.
 
 ---
 
@@ -148,42 +148,461 @@ The individual method functions should be the primary API. A convenience wrapper
 
 ## Phase 6: Baseflow Separation Methods to Add
 
-The following are well-established methods not currently in the package:
+Detailed research into each candidate method, with findings that inform implementation priority and approach.
 
-### High priority
+### Existing Filter Taxonomy
+
+Before adding new methods, it is important to understand the structural taxonomy of the existing recursive digital filters. Eckhardt (2005, 2008) showed that most filters follow the general form:
+
+```
+b(t) = alpha * b(t-1) + beta * (Q(t) + gamma * Q(t-1))
+```
+
+The filters split into **two structural families** based on gamma:
+
+**Family 1: gamma = 0 (current-timestep-only, linear reservoir derived)**
+
+| Filter | alpha | beta | gamma |
+|---|---|---|---|
+| Chapman-Maxwell (1996) | `k / (2-k)` | `(1-k) / (2-k)` | 0 |
+| Boughton (1993) | `k / (1+C)` | `C / (1+C)` | 0 |
+| Eckhardt (2005) | `(1-BFImax)*k / (1-k*BFImax)` | `(1-k)*BFImax / (1-k*BFImax)` | 0 |
+| EWMA / Tularam-Ilahee (2008) | `a` | `1-a` | 0 |
+
+Key relationships within this family:
+- Chapman-Maxwell is Eckhardt with `BFImax = 0.5`
+- Boughton is Eckhardt with `C = (1-k)*BFImax / (1-BFImax)` (a reparameterization)
+- EWMA corresponds to the degenerate limit `BFImax = 1`
+
+**Family 2: gamma = 1 (two-timestep, signal-processing derived)**
+
+| Filter | alpha | beta | gamma |
+|---|---|---|---|
+| Lyne-Hollick (1979) | `a` | `(1-a)/2` | 1 |
+| Chapman (1991) | `(3k-1)/(3-k)` | `(1-k)/(3-k)` | 1 |
+| Willems (2009) | `(a-v)/(1+v)` | `v/(1+v)` | 1 |
+
+Lyne-Hollick, Chapman (1991), and Willems are **not** special cases of the Eckhardt equation — they include `Q(t-1)`, while Eckhardt's form uses only `Q(t)`. The gamma=0 family derives from linear reservoir theory (physically based); the gamma=1 family originates from signal processing (low-pass filtering).
+
+This taxonomy directly informs the Phase 2 refactoring: implement a private `_recursive_digital_filter(Q, alpha, beta, gamma, b0)` as the shared computational core, then keep all named public functions as thin wrappers that compute their specific alpha/beta/gamma from published parameters. This eliminates the boilerplate duplication while preserving the user-facing API and makes adding new filters trivial.
+
+References:
+- Eckhardt, K. (2005). How to construct recursive digital filters for baseflow separation. *Hydrological Processes*, 19, 507-515.
+- Eckhardt, K. (2008). A comparison of baseflow indices. *Journal of Hydrology*, 352, 168-173.
+- Eckhardt, K. (2023). How physically based is hydrograph separation by recursive digital filtering? *HESS*, 27, 495-499.
+
+---
+
+### 6.1 Nathan-McMahon (1990) — ALREADY IMPLEMENTED
+
+**Reference:** Nathan, R.J. and McMahon, T.A. (1990). Evaluation of automated techniques for base flow and recession analyses. *Water Resources Research*, 26(7), 1465-1473.
+
+**Finding:** Nathan-McMahon is **not a distinct algorithm**. It is the Lyne-Hollick (1979) filter with a specific recommended parameterization and application protocol. The equation is identical:
+
+```
+b(t) = alpha * b(t-1) + (1-alpha)/2 * (Q(t) + Q(t-1))
+```
+
+This matches the existing `lh()` implementation exactly (separation.py line 535). Nathan & McMahon's contributions were:
+1. Standardized `alpha = 0.925` (the existing default in `lh()`)
+2. Validated the filter against manual separation across 186 Australian catchments
+3. Recommended a 3-pass protocol (forward-backward-forward), whereas the current `lh()` does 2 passes
+
+**Implementation:** No new function needed. Document the Nathan-McMahon (1990) reference in the `lh()` docstring. Note that `lh_multi(Q, beta=0.925, num_pass=3)` reproduces the Nathan-McMahon recommended protocol exactly.
+
+---
+
+### 6.2 Generalized Recursive Digital Filter Refactoring
+
+**Reference:** Eckhardt, K. (2005, 2008) — see taxonomy section above.
+
+**Implementation:** This is an internal refactoring task, not a new user-facing method. The approach:
+
+1. Create `_recursive_digital_filter(Q, alpha, beta, gamma, b0)` as the shared computational core
+2. All existing filter functions become thin wrappers that:
+   - Accept their published parameters (e.g., `eckhardt(Q, a, BFImax)`)
+   - Compute alpha/beta/gamma from those parameters
+   - Delegate to the core function
+3. This also makes adding new filters (e.g., IHACRES) trivial — just define the parameter mapping
+
+The core function handles:
+- Initial value setting (`b[0] = b0`)
+- Forward iteration with the general equation
+- Streamflow capping (`b[t] = min(b[t], Q[t])`)
+- The `return_exceed` pattern (if retained)
+
+This should be done as part of Phase 2 cleanup, not Phase 6.
+
+---
+
+### 6.3 PART (Rutledge, 1998) — NEW, HIGH PRIORITY
+
+**Reference:** Rutledge, A.T. (1998). Computer programs for describing the recession of ground-water discharge and for estimating mean ground-water recharge and discharge from streamflow records — Update. *USGS Water-Resources Investigations Report 98-4148*.
+
+**Why this matters:** PART is one of the most widely used baseflow separation methods in US groundwater studies. It represents a fundamentally different paradigm from digital filters — a recession-based graphical method that identifies days where streamflow equals baseflow, then interpolates. No Python implementation currently exists. This would be a significant and unique addition to the package.
+
+**Algorithm (from Figure 12, USGS WRI 98-4148):**
+
+**Step 1 — Compute the recession duration N:**
+```
+N = A^0.2
+```
+where A = drainage area in square miles. The existing `hysep_interval()` already computes this (with km²-to-sq-mi conversion). N is generally not an integer.
+
+**Step 2 — Identify qualifying (groundwater discharge) days:**
+A day qualifies if streamflow has been continuously declining (or equal) for the preceding N consecutive days: `Q[i] >= Q[i+1]` for all i in the N-day window before the day in question.
+
+**Step 3 — Apply the 0.1 log-cycle check:**
+For each qualifying day, check if it is followed by a daily decline exceeding 0.1 log cycles:
+```
+if log10(Q[day]) - log10(Q[day+1]) > 0.1  →  disqualify the day
+```
+Rationale (Barnes, 1939): A decline > 0.1 log cycle/day indicates surface runoff is still present. The 0.1 threshold is the default but can be user-adjustable.
+
+**Step 4 — Set baseflow on qualifying days:**
+On all remaining qualifying days, set `baseflow = streamflow`.
+
+**Step 5 — Log-linear interpolation:**
+For all non-qualifying days, interpolate baseflow linearly between the log values of the nearest preceding and following qualifying days:
+```
+log10(b[t]) = linear_interp(log10(b[t_prev]), log10(b[t_next]))
+b[t] = 10^(interpolated value)
+```
+This produces exponential-decay curves between anchor points.
+
+**Step 6 — Iterative correction for baseflow > streamflow:**
+If any interpolated baseflow exceeds streamflow:
+1. Find the day in the offending interval with the largest `log(baseflow) - log(streamflow)`
+2. Make that day a new anchor point (baseflow = streamflow)
+3. Return to Step 5 and re-interpolate
+4. Repeat until no violations remain
+
+**Step 7 — Three-pass combination:**
+Run the entire procedure three times with:
+- Pass 1: N = floor(A^0.2) (minimum 1)
+- Pass 2: N = ceil(A^0.2) (minimum 2)
+- Pass 3: N = ceil(A^0.2) + 1
+
+Combine the three mean baseflow estimates using second-order polynomial (curvilinear) interpolation as a function of N, evaluated at the exact real-valued N = A^0.2. (Note: the USGS-R DVstats implementation simplifies this to linear interpolation between floor and ceil results.)
+
+**Key parameters:**
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `area` | Required | Drainage area (km² or sq mi, with conversion) |
+| `log_cycle_threshold` | 0.1 | Daily log10 decline threshold; user-adjustable |
+
+**Edge cases:**
+- Zero flows: convert to a small epsilon (e.g., 1e-99) to avoid log(0); set baseflow < 1e-6 to 0
+- Record edges: extrapolate using the nearest qualifying day's value (constant extrapolation)
+- Drainage area limits: recommended 1-500 sq mi; below 1, N < 1 day; above ~500, nonuniform weather
+
+**Implementation notes:**
+- Reuse `hysep_interval()` for N computation (already converts km² to sq mi)
+- This is a graphical/recession method — no recursive filter, no numba needed
+- The iterative correction loop (Step 6) converges quickly in practice
+- Function signature: `part(Q, area, log_cycle_threshold=0.1)`
+- Returns a numpy array of daily baseflow values
+
+---
+
+### 6.4 BFlow (Arnold & Allen, 1999) — FILTER EXISTS, ADD RECESSION ANALYSIS
+
+**References:**
+- Arnold, J.G. and Allen, P.M. (1999). Automated methods for estimating baseflow and ground water recharge from streamflow records. *JAWRA*, 35(2), 411-424.
+- Arnold, J.G., Allen, P.M., Muttiah, R., and Bernhardt, G. (1995). Automated base flow separation and recession analysis techniques. *Groundwater*, 33(6), 1010-1018.
+
+**Finding:** The BFlow filter equation is identical to Lyne-Hollick / Nathan-McMahon:
+```
+q(t) = beta * q(t-1) + ((1+beta)/2) * (Q(t) - Q(t-1))    [quickflow form]
+b(t) = Q(t) - q(t)                                          [baseflow by subtraction]
+```
+with `beta = 0.925` and 3 passes (forward-backward-forward). This is already covered by `lh_multi(Q, beta=0.925, num_pass=3)`.
+
+**What BFlow adds beyond the filter:** An automated recession analysis that computes the **alpha factor** (baseflow recession constant), which maps directly to SWAT's `ALPHA_BF` parameter. This is the novel contribution:
+
+1. Identify baseflow recession segments from the separated baseflow time series
+2. Select segments between NDMIN (default 10) and NDMAX (default 300) days
+3. Assemble into a master recession curve
+4. Fit the exponential recession: `Q(t) = Q(0) * exp(-alpha * t)`
+5. Compute **baseflow days** (BFD): days for recession to decline one log cycle, where `alpha = 2.3 / BFD`
+
+**Outputs per pass:**
+- Baseflow fraction (Fr1, Fr2, Fr3 from each pass)
+- Alpha factor (recession constant)
+- Number of recession segments used (NPR)
+- Baseflow days
+
+**Implementation:**
+- The filter itself requires no new code — use `lh_multi()` with `num_pass=3`
+- Implement `bflow_recession_analysis(Q, b, ndmin=10, ndmax=300)` as a new function in `estimate.py` that takes the separated baseflow and returns the alpha factor, baseflow days, and number of recession segments
+- Provide a convenience wrapper `bflow(Q, beta=0.925)` that runs both the filter and recession analysis, returning a results object with all BFlow outputs
+- This gives SWAT users a direct path to `ALPHA_BF` calibration
+
+---
+
+### 6.5 Conductivity Mass Balance — CMB (Stewart et al., 2007) — NEW, HIGH PRIORITY
+
+**Reference:** Stewart, M.T., Cimino, J., and Ross, M. (2007). Calibration of base flow separation methods with streamflow conductivity. *Groundwater*, 45(1), 17-27.
+
+**Why this matters:** CMB is a completely different paradigm — tracer-based rather than mathematical. It provides a physically grounded baseflow estimate that is commonly used as a calibration reference for digital filters (e.g., calibrating Eckhardt's BFImax). No Python implementation currently exists. Adding CMB would make pybaseflow the first Python package to offer both filter-based and tracer-based separation methods.
+
+**Core equation (two-component mixing model):**
+
+Water balance: `Q(t) = Q_b(t) + Q_r(t)`
+Solute mass balance: `Q(t) * SC(t) = Q_b(t) * SC_BF + Q_r(t) * SC_RO`
+
+Solving for baseflow:
+```
+Q_b(t) = Q(t) * (SC(t) - SC_RO) / (SC_BF - SC_RO)
+```
+
+Where:
+- `Q(t)` = total streamflow at time t
+- `SC(t)` = measured specific conductance (uS/cm) at time t
+- `SC_BF` = baseflow end-member conductivity (constant)
+- `SC_RO` = surface runoff end-member conductivity (constant)
+
+**Data requirements:**
+- Streamflow time series `Q(t)` (daily or sub-daily)
+- Concurrent specific conductance time series `SC(t)`
+- Minimum 6 months of paired data recommended; multi-year records ideal
+
+**End-member estimation (the critical step):**
+- `SC_RO`: Use the **1st percentile** of the SC record (not the absolute minimum, which is noise-sensitive)
+- `SC_BF`: Three approaches:
+  1. Maximum SC — simple but sensitive to outliers (not recommended)
+  2. 99th percentile of entire SC record — more robust
+  3. Dynamic yearly 99th percentile with interpolation (recommended) — accommodates temporal changes in groundwater chemistry
+
+Sensitivity: BFI is more sensitive to SC_BF than SC_RO. A 10% error in SC_BF causes ~13% error in BFI; the same error in SC_RO causes only ~6% error.
+
+**Physical constraints:**
+- If `Q_b(t) > Q(t)` (SC(t) > SC_BF): cap at `Q_b(t) = Q(t)`
+- If `Q_b(t) < 0` (SC(t) < SC_RO): set `Q_b(t) = 0`
+
+**When CMB works well:**
+- Strong inverse correlation between Q and SC (r <= -0.5)
+- Headwater/tributary streams, steep terrain
+- Large contrast between groundwater and runoff conductivity
+- Minimal anthropogenic influence
+
+**When CMB fails:**
+- No consistent inverse Q-SC correlation (r > -0.3)
+- Anthropogenic interference (irrigation, mining, road salt)
+- Reservoir influence (evaporation increases SC)
+- Large catchments (>34,000 km² — only ~11% show strong inverse correlation)
+- Non-conservative SC behavior
+
+**Common integrated workflow in the literature:**
+1. Collect 6+ months of paired Q and SC data
+2. Run CMB to get a reference BFI
+3. Use that BFI to calibrate Eckhardt's BFImax parameter
+4. Apply calibrated Eckhardt to the full discharge record where SC data is unavailable
+
+Note: Zhang et al. (2021) found that while cumulative baseflow from calibrated Eckhardt matches CMB well (NSE 0.91-1.00), daily baseflow series are inconsistent (mean NSE -0.30), suggesting the two methods measure fundamentally different things at short timescales.
+
+**Implementation:**
+- Function signature: `cmb(Q, SC, SC_BF=None, SC_RO=None, sc_bf_percentile=99, sc_ro_percentile=1)`
+- If end-members are not provided, estimate from the SC record using percentiles
+- Add `estimate_endmembers(SC, bf_percentile=99, ro_percentile=1)` utility
+- Returns numpy array of daily baseflow values
+- Add `calibrate_eckhardt_from_cmb(Q, SC)` convenience function that runs CMB, estimates BFI, and returns a calibrated BFImax for use with `eckhardt()`
+- Place in a new module `pybaseflow/tracer.py` to separate tracer-based methods from digital filters
+
+**Additional references:**
+- Li, Q., et al. (2020). Key challenges facing the application of the CMB method. *HESS*, 24, 6075-6090.
+- Zhang, J., et al. (2021). Can the two-parameter recursive digital filter really be calibrated by CMB? *HESS*, 25, 1747-1760.
+- Cartwright, I., et al. (2022). Implications of variations in stream specific conductivity. *HESS*, 26, 183-195.
+- Mei, Y., et al. (2024). Optimal baseflow separation through chemical mass balance. *Water Resources Research*, 60, e2023WR036386.
+
+---
+
+### 6.6 Jakeman-Hornberger / IHACRES (1993) — NEW, MEDIUM PRIORITY
+
+**Reference:** Jakeman, A.J. and Hornberger, G.M. (1993). How much complexity is warranted in a rainfall-runoff model? *Water Resources Research*, 29(8), 2637-2649.
+
+**Finding:** The IHACRES baseflow filter is a 3-parameter extension of the existing Boughton filter. The equation:
+
+```
+b(t) = [a / (1+C)] * b(t-1) + [C / (1+C)] * (Q(t) + alpha_s * Q(t-1))
+```
+
+When `alpha_s = 0`, this reduces exactly to `boughton()` (separation.py line 182). The extra `alpha_s * Q(t-1)` term adds dependence on the previous timestep's total flow, accounting for delayed baseflow response.
+
+**Relationship to the full IHACRES model:**
+The IHACRES rainfall-runoff model routes effective rainfall through two parallel linear stores:
+```
+X_q(t) = alpha_q * X_q(t-1) + beta_q * U(t)    [quick flow store]
+X_s(t) = alpha_s * X_s(t-1) + beta_s * U(t)    [slow flow store]
+Q(t) = X_q(t) + X_s(t)
+```
+The baseflow filter form above is the inverse problem: extracting the slow flow component from observed total streamflow without requiring rainfall data.
+
+**Key parameters:**
+
+| Parameter | Meaning | Typical Range | Constraint |
+|---|---|---|---|
+| `a` | Recession coefficient for slow flow | 0.9-0.999 | Related to `tau_s`: `a = exp(-1/tau_s)` |
+| `C` | Partitioning parameter | 0.1-1.0 | Controls fraction attributed to baseflow |
+| `alpha_s` | Previous-timestep dependence | -0.99 to 0 | `alpha_s = -exp(-1/k)` where k is recession constant; 0 reduces to Boughton |
+
+**In the generalized filter taxonomy:**
+```
+alpha = a / (1 + C)
+beta  = C / (1 + C)
+gamma = alpha_s    (NOT 0 or 1, but a calibrated value)
+```
+This makes IHACRES unique — it is neither purely gamma=0 nor gamma=1, but occupies the continuum between the two families.
+
+**Implementation:**
+- Extend the Boughton implementation pattern with one additional parameter
+- Function signature: `ihacres(Q, a, C, alpha_s, initial_method='Q0', return_exceed=False)`
+- Calibration: extend `param_calibrate()` to handle the 3-parameter space, or provide alpha_s estimation from recession analysis
+- With the generalized `_recursive_digital_filter()` core, this is trivial to add
+
+---
+
+### 6.7 Brutsaert-Nieber (1977) — BUG FIX, MEDIUM PRIORITY
+
+**Reference:** Brutsaert, W. and Nieber, J.W. (1977). Regionalized drought flow hydrographs from a mature glaciated plateau. *Water Resources Research*, 13(3), 637-643.
+
+**Finding:** The existing `bn77()` implementation has a confirmed critical bug.
+
+**The bug (separation.py line 821):**
+```python
+drought_flow_points = _eliminate_points(recession_episodes, L_min,
+    snow_freeze_period, observational_precision, Q, quantile)
+```
+
+**The function signature (line 879):**
+```python
+def _eliminate_points(recession_episodes, L_min, snow_freeze_period,
+    observational_precision, Q, S, quantile):
+```
+
+`_eliminate_points()` expects 7 arguments but is called with 6 — the recession slope array `S` is missing. `S` is computed at line 815 via `S = _estimate_recession_slope(Q)` but never passed to the function. This causes a runtime crash (Python will bind `quantile` to the `S` parameter and raise TypeError for missing `quantile`).
+
+**Fix:** Add `S` to the call:
+```python
+drought_flow_points = _eliminate_points(recession_episodes, L_min,
+    snow_freeze_period, observational_precision, Q, S, quantile)
+```
+
+After fixing the bug, review the full bn77 pipeline for correctness:
+- `_estimate_recession_slope(Q)` — computes dQ/dt
+- `_identify_recession_episodes(Q)` — finds continuous recession periods
+- `_eliminate_points()` — filters out non-drought points using S and quantile thresholds
+
+---
+
+### 6.8 HYSEP Sliding Verification — LOW PRIORITY
+
+**Reference:** Sloto, R.A. and Crouse, M.Y. (1996). HYSEP: A computer program for streamflow hydrograph separation and analysis. *USGS Water-Resources Investigations Report 96-4040*.
+
+**Finding:** The current `slide()` implementation (separation.py line 592) uses a sliding window minimum approach with the correct interval calculation (`N = A^0.2`, odd integer between 3-11). Edge handling uses the minimum of the edge segment, which is reasonable but may differ slightly from the USGS spec in some interpretations. This is a minor verification task, not a rewrite.
+
+---
+
+### 6.9 Constant-k (Blume et al., 2007) — LOW PRIORITY, LIKELY SKIP
+
+**Reference:** Blume, T., Zehe, E., and Bronstert, A. (2007). Rainfall-runoff response, event-based runoff coefficients and hydrograph separation. *Hydrological Sciences Journal*, 52(5), 843-862.
+
+**Finding:** The constant-k method is an **event-based** recession technique, not a continuous filter. During recession: `b(t) = k * b(t-1)`. This is what every linear-reservoir-based filter reduces to when `b(t) = Q(t)` (no direct runoff). The recession constant `k` is already computed by `recession_coefficient()` in estimate.py.
+
+Implementing constant-k as a standalone method would require:
+- Storm event identification as a preprocessing step
+- Extrapolation of the pre-event recession beneath the event hydrograph
+- Event boundary detection using the instantaneous recession ratio
+
+The event-detection complexity adds significant scope for marginal value — the recession behavior is already implicit in all the existing filters. **Recommend skipping** unless there is a specific use case for event-based separation.
+
+---
+
+### 6.10 Lower Priority / Future
 
 | Method | Reference | Notes |
 |---|---|---|
-| **Nathan-McMahon (1990)** | Nathan & McMahon, 1990 | One of the most widely used single-parameter recursive digital filters. Often confused with Lyne-Hollick but has its own parameterization. Verify `lh()` doesn't already cover this. |
-| **Sweetwater (SWT) / RDF** | Eckhardt, 2008 | Generalized recursive digital filter framework. Eckhardt showed most filters are special cases of a general form. Implementing the general form would unify several existing methods. |
-| **PART** | Rutledge, 1998 (USGS) | USGS program for estimating baseflow from daily streamflow using the antecedent recession requirement. Very widely used in practice, especially in the US. |
-| **BFlow** | Arnold & Allen, 1999 | Automated baseflow separation, widely used with SWAT. Based on recursive digital filter with specific calibration approach. |
-| **Conductivity Mass Balance (CMB)** | Stewart et al., 2007 | Uses specific conductance as a tracer to separate baseflow. Different paradigm (tracer-based) but very useful when conductivity data is available. |
+| **Generalized Conductivity Mass Balance** | Miller et al., 2014 | Extension of CMB for multiple end-members. Implement after CMB is stable. |
+| **Wavelet-based separation** | Various | Wavelet decomposition to separate high/low frequency signals. Research-grade, less standardized. |
+| **Kalinlin-type** | Various Russian literature | Recession-based methods popular in Eastern European hydrology. Niche but broadens scope. |
 
-### Medium priority
+---
 
-| Method | Reference | Notes |
+## Summary: Method Coverage After Refactoring
+
+The refactored pybaseflow package will offer methods spanning four distinct paradigms:
+
+### Recursive Digital Filters (gamma=0 family — linear reservoir based)
+| Method | Function | Parameters | Reference |
+|---|---|---|---|
+| Chapman-Maxwell | `chapman_maxwell()` | k | Chapman & Maxwell, 1996 |
+| Boughton | `boughton()` | k, C | Boughton, 1993 |
+| Furey-Gupta | `furey()` | a, A | Furey & Gupta, 2001 |
+| Eckhardt | `eckhardt()` | a, BFImax | Eckhardt, 2005 |
+| EWMA | `ewma()` | e | Tularam & Ilahee, 2008 |
+| WHAT | `what()` (alias) | a, BFImax | Lim et al., 2005 |
+
+### Recursive Digital Filters (gamma=1 family — signal processing based)
+| Method | Function | Parameters | Reference |
+|---|---|---|---|
+| Lyne-Hollick | `lh()` / `lh_multi()` | beta, num_pass | Lyne & Hollick, 1979; Nathan & McMahon, 1990 |
+| Chapman | `chapman()` | k | Chapman, 1991 |
+| Willems | `willems()` | a, w | Willems, 2009 |
+
+### Recursive Digital Filters (variable gamma — hybrid)
+| Method | Function | Parameters | Reference |
+|---|---|---|---|
+| Jakeman-Hornberger | `ihacres()` | a, C, alpha_s | Jakeman & Hornberger, 1993 |
+| HydRun | `hyd_run()` | (TBD) | (TBD) |
+
+### Graphical / Recession-Based Methods
+| Method | Function | Parameters | Reference |
+|---|---|---|---|
+| UKIH | `ukih()` | area | Piggott et al., 2005 |
+| Local minimum | `local()` | area | Sloto & Crouse, 1996 |
+| Fixed interval | `fixed()` | area | Sloto & Crouse, 1996 |
+| Sliding interval | `slide()` | area | Sloto & Crouse, 1996 |
+| PART | `part()` | area | Rutledge, 1998 |
+| Brutsaert-Nieber | `bn77()` | L_min, quantile | Brutsaert & Nieber, 1977 |
+
+### Tracer-Based Methods
+| Method | Function | Parameters | Reference |
+|---|---|---|---|
+| Conductivity Mass Balance | `cmb()` | SC, SC_BF, SC_RO | Stewart et al., 2007 |
+
+### Supporting Functions
+| Function | Module | Purpose |
 |---|---|---|
-| **Brutsaert-Nieber (1977)** | Brutsaert & Nieber, 1977 | Already in codebase as `bn77()` but has bugs — fix rather than rewrite. See Phase 1 notes. |
-| **HYSEP Sliding (improved)** | Sloto & Crouse, 1996 | The current `slide()` implementation may not perfectly match the USGS HYSEP specification. Worth verifying and correcting. |
-| **Constant-k** | Blume et al., 2007 | Simple exponential recession filter with a constant recession constant. Easy to implement, commonly used as a baseline. |
-| **Jakeman-Hornberger (IHACRES)** | Jakeman & Hornberger, 1993 | Two-component recursive filter from the IHACRES rainfall-runoff model. Separates quick flow and slow flow. |
-
-### Lower priority / future
-
-| Method | Reference | Notes |
-|---|---|---|
-| **Generalized Conductivity Mass Balance** | Miller et al., 2014 | Extension of CMB that accounts for multiple end-members. |
-| **Wavelet-based separation** | Various | Uses wavelet decomposition to separate high-frequency (quick flow) from low-frequency (baseflow) signals. Research-grade, less standardized. |
-| **Kalinlin-type** | Various Russian literature | Recession-based methods popular in Eastern European hydrology. Niche but would broaden the package's scope. |
+| `recession_coefficient()` | estimate.py | Compute recession constant from discharge |
+| `param_calibrate()` | estimate.py | Auto-calibrate filter parameters |
+| `maxmium_BFI()` | estimate.py | Estimate BFImax from annual data |
+| `bflow_recession_analysis()` | estimate.py | BFlow/SWAT alpha factor computation |
+| `estimate_endmembers()` | tracer.py | Estimate SC_BF and SC_RO from conductivity data |
+| `calibrate_eckhardt_from_cmb()` | tracer.py | Calibrate Eckhardt BFImax using CMB reference |
+| `clean_streamflow()` | utils.py | Input validation and cleaning |
 
 ---
 
 ## Suggested Order of Work
 
-1. **Delete** study-specific files and code (Phase 1)
-2. **Clean up** remaining methods and helpers (Phase 2-3)
-3. **Modernize** packaging (Phase 4)
-4. **Add** PART and BFlow as the first new methods (Phase 6, high priority)
-5. **Rewrite** documentation
-6. **Add** remaining new methods incrementally
+1. **Phase 1 — Delete** study-specific files and code
+2. **Phase 2-3 — Refactor** existing methods:
+   a. Implement `_recursive_digital_filter()` core (generalized RDF)
+   b. Convert existing filters to thin wrappers
+   c. Deduplicate `initial_method` and `return_exceed` boilerplate
+   d. Fix `bn77()` bug (missing `S` argument)
+   e. Verify `slide()` against HYSEP spec
+   f. Clean up estimate.py and utils.py
+3. **Phase 4 — Modernize** packaging (pyproject.toml, rename to pybaseflow)
+4. **Phase 5 — Add new methods** (highest impact first):
+   a. **PART** — new paradigm, widely used, no Python implementation exists
+   b. **CMB** + `calibrate_eckhardt_from_cmb()` — new paradigm, tracer-based, calibration bridge
+   c. **BFlow recession analysis** — SWAT interoperability, builds on existing lh_multi()
+   d. **IHACRES** — extends Boughton with one additional parameter
+5. **Phase 6 — Documentation and journal article**
+   - Comprehensive docstrings with references for all methods
+   - Unified notation across all method descriptions
+   - Worked examples with real hydrograph data
+   - Method comparison / benchmarking suite
+   - Journal article describing pybaseflow's scope, taxonomy, and implementation
