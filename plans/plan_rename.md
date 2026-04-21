@@ -41,7 +41,7 @@ PyPI does **not** allow renaming an existing project — you publish under the n
 ## Docs / site
 
 1. Update `mkdocs.yml` site name, repo URL, and any hard-coded install commands.
-2. If the MkDocs site is deployed to GitHub Pages on `njones61.github.io/pybaseflow/`, GitHub's repo redirect does **not** cover Pages — the new Pages URL becomes `njones61.github.io/baseflowx/`. Update any external links (from your personal site, the PyPI description, etc.) after the rename.
+2. Docs are served on ReadTheDocs. The RTD project is tied to a specific repo and slug — after the GitHub rename, check that the RTD project's repo URL still resolves (GitHub redirects help) and decide whether to rename the RTD project from `pybaseflow` to `baseflowx` so the served URL matches `mkdocs.yml`'s `site_url`.
 3. Update README badges (PyPI, CI, docs link) to point to the new project.
 
 ## Verification checklist

@@ -25,7 +25,7 @@ pip install matplotlib
 If you want to contribute to baseflowx or run its test suite, clone the repository and install in editable mode with the development extras:
 
 ```bash
-git clone https://github.com/ciroh-ua/baseflowx.git
+git clone https://github.com/njones61/baseflowx.git
 cd baseflowx
 pip install -e ".[dev]"
 ```
