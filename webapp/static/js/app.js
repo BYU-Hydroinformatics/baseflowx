@@ -71,6 +71,36 @@ document.getElementById("expand-analysis").addEventListener("click", () => {
   if (chart._fullLayout) Plotly.Plots.resize(chart);
 });
 
+// Drag-to-resize the bottom analysis panel
+(() => {
+  const handle = document.getElementById("analysis-resize");
+  const minH = 160;
+  let startY = 0;
+  let startH = 0;
+
+  function onMove(e) {
+    const dy = startY - e.clientY;
+    const next = Math.max(minH, Math.min(window.innerHeight - 80, startH + dy));
+    analysisPanel.style.height = next + "px";
+  }
+  function onUp() {
+    analysisPanel.classList.remove("resizing");
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+    const chart = document.getElementById("chart");
+    if (chart._fullLayout) Plotly.Plots.resize(chart);
+  }
+  handle.addEventListener("mousedown", e => {
+    if (analysisPanel.classList.contains("fullscreen")) return;
+    e.preventDefault();
+    startY = e.clientY;
+    startH = analysisPanel.getBoundingClientRect().height;
+    analysisPanel.classList.add("resizing");
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+})();
+
 let yAxisType = "linear";
 const yAxisBtn = document.getElementById("toggle-yaxis");
 yAxisBtn.addEventListener("click", () => {
@@ -134,13 +164,37 @@ function clearAnalysis() {
 const form = document.getElementById("analyze-form");
 form.addEventListener("submit", e => e.preventDefault());
 
+const PARAM_METHODS = {
+  beta:    ["lh", "local", "ukih"],
+  a_coef:  ["eckhardt", "chapman", "chapman_maxwell"],
+  bfi_max: ["eckhardt"],
+  area:    ["fixed", "slide", "local", "part"],
+};
+
+function updateParamVisibility() {
+  const checked = new Set(
+    [...form.querySelectorAll("input[name=method]:checked")].map(x => x.value)
+  );
+  for (const [param, methods] of Object.entries(PARAM_METHODS)) {
+    const input = form.elements[param];
+    if (!input) continue;
+    const label = input.closest("label");
+    if (!label) continue;
+    label.classList.toggle("dimmed", !methods.some(m => checked.has(m)));
+  }
+}
+updateParamVisibility();
+
 let runTimer = null;
 let runCounter = 0;
 function runAnalysisSoon(delay = 250) {
   clearTimeout(runTimer);
   runTimer = setTimeout(runAnalysis, delay);
 }
-form.addEventListener("change", () => runAnalysisSoon());
+form.addEventListener("change", () => {
+  updateParamVisibility();
+  runAnalysisSoon();
+});
 form.addEventListener("input", e => {
   // number inputs fire input on every keystroke; debounce those too
   if (e.target.matches("input[type=number]")) runAnalysisSoon(500);

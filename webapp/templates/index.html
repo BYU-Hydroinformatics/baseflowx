@@ -19,6 +19,7 @@
       <div id="map"></div>
 
       <section id="analysis-panel" class="hidden" aria-label="Analysis">
+        <div id="analysis-resize" aria-label="Resize analysis panel" title="Drag to resize"></div>
         <div class="analysis-header">
           <span id="analysis-title">Analysis</span>
           <div class="analysis-actions">
@@ -59,10 +60,12 @@
           </div>
         </fieldset>
 
-        <details>
+        <details open>
           <summary>Filter parameters</summary>
-          <label>Lyne-Hollick β
+          <label>
+            <span>Lyne-Hollick <span class="greek">β</span></span>
             <input type="number" name="beta" min="0.5" max="0.99" step="0.005" value="0.925">
+            <small class="hint">Also used for UKIH / Local minimum edge-fill.</small>
           </label>
           <label>Recession coefficient a
             <input type="number" name="a_coef" min="0.5" max="0.999" step="0.005" value="0.925">

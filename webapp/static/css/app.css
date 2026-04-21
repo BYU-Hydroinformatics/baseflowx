@@ -38,14 +38,34 @@ main { flex: 1; display: flex; position: relative; min-height: 0; }
   display: flex;
   flex-direction: column;
   height: 45vh;
-  min-height: 280px;
+  min-height: 200px;
   background: #fff;
   border-top: 1px solid #e0e0e0;
   box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
-  transition: height 0.2s ease;
 }
 #analysis-panel.hidden { display: none; }
-#analysis-panel.fullscreen { height: calc(100vh - 48px); }
+#analysis-panel.fullscreen { height: calc(100vh - 48px) !important; }
+#analysis-panel.resizing { user-select: none; }
+
+#analysis-resize {
+  height: 5px;
+  cursor: ns-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  margin-top: -5px;  /* overlap with map so handle sits on the seam */
+  z-index: 3;
+}
+#analysis-resize::after {
+  content: "";
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 32px; height: 3px;
+  background: #c0c4c9; border-radius: 2px;
+  opacity: 0; transition: opacity 0.15s;
+}
+#analysis-resize:hover::after,
+#analysis-panel.resizing #analysis-resize::after { opacity: 1; }
 
 .analysis-header {
   display: flex; align-items: center; gap: 12px;
@@ -153,6 +173,18 @@ main { flex: 1; display: flex; position: relative; min-height: 0; }
 #analyze-form details summary { font-size: 11px; color: #555; cursor: pointer; user-select: none; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
 #analyze-form details { border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px 10px; }
 #analyze-form details[open] > label { margin-top: 8px; }
+#analyze-form label.dimmed { opacity: 0.4; }
+#analyze-form label.dimmed input { pointer-events: none; }
+#analyze-form .greek { text-transform: none; font-style: italic; }
+#analyze-form .hint {
+  font-size: 10px;
+  font-weight: normal;
+  color: #888;
+  text-transform: none;
+  letter-spacing: normal;
+  margin-top: 2px;
+  line-height: 1.3;
+}
 
 button.primary {
   padding: 10px; background: #1a73e8; color: #fff;
