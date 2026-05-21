@@ -11,6 +11,10 @@
   <header>
     <h1>Baseflow Explorer</h1>
     <span class="subtitle">Powered by <a href="https://pypi.org/project/baseflowx/" target="_blank" rel="noopener">baseflowx</a> v{{ version }}</span>
+    <div id="search-box">
+      <input type="search" id="search-input" placeholder="Search gage by name or ID…" autocomplete="off" aria-label="Search gage" aria-haspopup="listbox">
+      <ul id="search-results" role="listbox" aria-label="Matching gages"></ul>
+    </div>
     <a class="repo-link" href="https://github.com/BYU-Hydroinformatics/baseflowx" target="_blank" rel="noopener">GitHub</a>
   </header>
 

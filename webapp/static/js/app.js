@@ -36,10 +36,12 @@ L.control.layers(basemaps, null, { position: "topright" }).addTo(map);
 const markers = L.layerGroup().addTo(map);
 let selectedLayer = null;
 const sitesByNo = new Map();
+let allSites = [];
 
 fetch("/sites.json")
   .then(r => r.json())
   .then(sites => {
+    allSites = sites;
     sites.forEach(s => {
       if (s.dec_lat_va == null || s.dec_long_va == null) return;
       sitesByNo.set(s.site_no, s);
@@ -294,6 +296,59 @@ function renderAnalysis(data) {
   csvBtn.classList.remove("hidden");
   csvBtn.onclick = () => downloadCsv(data);
 }
+
+// ── Gage search ──────────────────────────────────────────────────────────────
+
+const searchInput = document.getElementById("search-input");
+const searchResults = document.getElementById("search-results");
+
+searchInput.addEventListener("input", () => {
+  const q = searchInput.value.trim().toLowerCase();
+  if (q.length < 2) { hideSearch(); return; }
+
+  const matches = allSites.filter(s =>
+    s.site_no.includes(q) ||
+    (s.station_nm && s.station_nm.toLowerCase().includes(q))
+  ).slice(0, 8);
+
+  if (!matches.length) { hideSearch(); return; }
+
+  searchResults.innerHTML = matches.map(s =>
+    `<li role="option" data-site="${escapeHtml(s.site_no)}">` +
+    `<span class="sr-id">${escapeHtml(s.site_no)}</span>` +
+    `<span class="sr-name">${escapeHtml(s.station_nm || "")}</span>` +
+    `</li>`
+  ).join("");
+  searchResults.classList.remove("hidden");
+});
+
+searchResults.addEventListener("click", e => {
+  const li = e.target.closest("li[data-site]");
+  if (!li) return;
+  const site = sitesByNo.get(li.dataset.site) ||
+               allSites.find(s => s.site_no === li.dataset.site);
+  if (!site) return;
+  clearSearch();
+  selectSite(site);
+  if (site.dec_lat_va != null) map.flyTo([site.dec_lat_va, site.dec_long_va], 12, { duration: 0.8 });
+});
+
+searchInput.addEventListener("keydown", e => {
+  if (e.key === "Escape") clearSearch();
+  if (e.key === "Enter") {
+    const first = searchResults.querySelector("li[data-site]");
+    if (first) first.click();
+  }
+});
+
+document.addEventListener("click", e => {
+  if (!document.getElementById("search-box").contains(e.target)) hideSearch();
+});
+
+function hideSearch() { searchResults.classList.add("hidden"); }
+function clearSearch() { searchInput.value = ""; hideSearch(); }
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function downloadCsv(data) {
   const methodKeys = Object.keys(data.baseflow);
