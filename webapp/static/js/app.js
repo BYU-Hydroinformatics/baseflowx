@@ -36,7 +36,44 @@ L.control.layers(basemaps, null, { position: "topright" }).addTo(map);
 const markers = L.layerGroup().addTo(map);
 let selectedLayer = null;
 const sitesByNo = new Map();
+const markersByNo = new Map();
 let allSites = [];
+
+// ── Favourites (localStorage) ─────────────────────────────────────────────────
+const FAVS_KEY = "baseflow_favourites";
+let favourites = new Set(JSON.parse(localStorage.getItem(FAVS_KEY) || "[]"));
+
+function saveFavourites() {
+  localStorage.setItem(FAVS_KEY, JSON.stringify([...favourites]));
+}
+
+function toggleFavourite(siteNo) {
+  if (favourites.has(siteNo)) favourites.delete(siteNo);
+  else favourites.add(siteNo);
+  saveFavourites();
+  applyMarkerStyle(siteNo);
+  syncFavBtn(siteNo);
+}
+
+function applyMarkerStyle(siteNo) {
+  const m = markersByNo.get(siteNo);
+  if (!m) return;
+  const fav = favourites.has(siteNo);
+  m.setStyle({ color: fav ? "#e91e63" : "#1e90ff", fillColor: fav ? "#e91e63" : "#1e90ff" });
+  m.setRadius(fav ? 6 : 4);
+}
+
+function syncFavBtn(siteNo) {
+  const btn = document.getElementById("favourite-btn");
+  if (!btn) return;
+  const fav = favourites.has(siteNo);
+  btn.innerHTML = fav ? "&#9829;" : "&#9825;";
+  btn.classList.toggle("active", fav);
+  btn.title = fav ? "Remove from favourites" : "Add to favourites";
+  btn.setAttribute("aria-label", fav ? "Remove from favourites" : "Add to favourites");
+  btn.onclick = () => toggleFavourite(siteNo);
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 fetch("/sites.json")
   .then(r => r.json())
@@ -45,12 +82,16 @@ fetch("/sites.json")
     sites.forEach(s => {
       if (s.dec_lat_va == null || s.dec_long_va == null) return;
       sitesByNo.set(s.site_no, s);
+      const fav = favourites.has(s.site_no);
       const m = L.circleMarker([s.dec_lat_va, s.dec_long_va], {
-        radius: 4, color: "#1e90ff", weight: 1, fillColor: "#1e90ff", fillOpacity: 0.75,
+        radius: fav ? 6 : 4,
+        color: fav ? "#e91e63" : "#1e90ff", weight: 1,
+        fillColor: fav ? "#e91e63" : "#1e90ff", fillOpacity: 0.75,
       });
       const name = escapeHtml(s.station_nm || "");
       m.bindTooltip(`<b>${s.site_no}</b><br>${name}`, { sticky: true });
       m.on("click", () => selectSite(s));
+      markersByNo.set(s.site_no, m);
       markers.addLayer(m);
     });
   });
@@ -149,6 +190,7 @@ function selectSite(site) {
   form.start.value = start.toISOString().slice(0, 10);
 
   panel.classList.remove("hidden");
+  syncFavBtn(site.site_no);
   closeAnalysis();
   runAnalysisSoon();
 }
