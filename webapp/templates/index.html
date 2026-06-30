@@ -100,6 +100,7 @@
       {% for key, m in methods.items() %}{{ key|tojson }}: {{ m.label|tojson }}{% if not loop.last %},{% endif %}
       {% endfor %}
     };
+    window.LABELED_SITES = new Set({{ labeled_sites | tojson }});
   </script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>

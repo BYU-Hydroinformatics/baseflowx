@@ -15,6 +15,8 @@ DATA_DIR = Path(__file__).parent / "data"
 SITES_PATH = DATA_DIR / "nwis_dv_sites.parquet"
 SQMI_TO_KM2 = 2.58999
 
+LABELED_SITES = {"01013500"}
+
 METHODS = {
     "lh":              {"label": "Lyne-Hollick"},
     "eckhardt":        {"label": "Eckhardt"},
@@ -47,6 +49,7 @@ def index():
         "index.html",
         version=bf.__version__,
         methods=METHODS,
+        labeled_sites=list(LABELED_SITES),
     )
 
 

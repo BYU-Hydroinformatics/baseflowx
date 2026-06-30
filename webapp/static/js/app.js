@@ -53,14 +53,19 @@ function toggleFavourite(siteNo) {
   saveFavourites();
   applyMarkerStyle(siteNo);
   syncFavBtn(siteNo);
+  refreshGagePanel();
 }
 
 function applyMarkerStyle(siteNo) {
   const m = markersByNo.get(siteNo);
   if (!m) return;
   const fav = favourites.has(siteNo);
-  m.setStyle({ color: fav ? "#e91e63" : "#1e90ff", fillColor: fav ? "#e91e63" : "#1e90ff" });
-  m.setRadius(fav ? 6 : 4);
+  if (window.LABELED_SITES && window.LABELED_SITES.has(siteNo)) {
+    m.setIcon(starIcon(fav ? "#e91e63" : "#ff9800"));
+  } else {
+    m.setStyle({ color: fav ? "#e91e63" : "#1e90ff", fillColor: fav ? "#e91e63" : "#1e90ff", weight: 1 });
+    m.setRadius(fav ? 6 : 4);
+  }
 }
 
 function syncFavBtn(siteNo) {
@@ -75,6 +80,60 @@ function syncFavBtn(siteNo) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Gage list panel (top-right) ──────────────────────────────────────────────
+function refreshGagePanel() {
+  function renderList(nos) {
+    return nos.map(no => {
+      const s = sitesByNo.get(no);
+      const nm = s ? escapeHtml(s.station_nm || "") : "";
+      return `<li class="glp-item" data-site="${escapeHtml(no)}">` +
+             `<span class="glp-no">${escapeHtml(no)}</span>` +
+             (nm ? `<span class="glp-nm">${nm}</span>` : "") +
+             `</li>`;
+    }).join("");
+  }
+  const exList = document.getElementById("glp-example-list");
+  if (exList && window.LABELED_SITES) exList.innerHTML = renderList([...window.LABELED_SITES]);
+  const favList = document.getElementById("glp-fav-list");
+  if (favList) {
+    favList.innerHTML = favourites.size
+      ? renderList([...favourites])
+      : `<li class="glp-empty">None yet</li>`;
+  }
+}
+
+const GageListControl = L.Control.extend({
+  options: { position: "topleft" },
+  onAdd() {
+    const div = L.DomUtil.create("div", "gage-list-panel");
+    div.innerHTML =
+      `<div class="glp-section">` +
+        `<div class="glp-header"><span class="glp-star">★</span> Examples</div>` +
+        `<ul class="glp-list" id="glp-example-list"></ul>` +
+      `</div>` +
+      `<div class="glp-section">` +
+        `<div class="glp-header"><span class="glp-heart">♥</span> Favourites</div>` +
+        `<ul class="glp-list" id="glp-fav-list"><li class="glp-empty">None yet</li></ul>` +
+      `</div>`;
+    L.DomEvent.disableClickPropagation(div);
+    L.DomEvent.disableScrollPropagation(div);
+    return div;
+  },
+});
+new GageListControl().addTo(map);
+
+["glp-example-list", "glp-fav-list"].forEach(id => {
+  document.getElementById(id).addEventListener("click", e => {
+    const li = e.target.closest("li[data-site]");
+    if (!li) return;
+    const site = sitesByNo.get(li.dataset.site) || allSites.find(s => s.site_no === li.dataset.site);
+    if (!site) return;
+    selectSite(site);
+    if (site.dec_lat_va != null) map.flyTo([site.dec_lat_va, site.dec_long_va], 12, { duration: 0.8 });
+  });
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 fetch("/sites.json")
   .then(r => r.json())
   .then(sites => {
@@ -83,23 +142,42 @@ fetch("/sites.json")
       if (s.dec_lat_va == null || s.dec_long_va == null) return;
       sitesByNo.set(s.site_no, s);
       const fav = favourites.has(s.site_no);
-      const m = L.circleMarker([s.dec_lat_va, s.dec_long_va], {
-        radius: fav ? 6 : 4,
-        color: fav ? "#e91e63" : "#1e90ff", weight: 1,
-        fillColor: fav ? "#e91e63" : "#1e90ff", fillOpacity: 0.75,
-      });
+      const labeled = window.LABELED_SITES && window.LABELED_SITES.has(s.site_no);
       const name = escapeHtml(s.station_nm || "");
+      let m;
+      if (labeled) {
+        m = L.marker([s.dec_lat_va, s.dec_long_va], {
+          icon: starIcon(fav ? "#e91e63" : "#ff9800"),
+          zIndexOffset: 500,
+        });
+      } else {
+        m = L.circleMarker([s.dec_lat_va, s.dec_long_va], {
+          radius: fav ? 6 : 4,
+          color: fav ? "#e91e63" : "#1e90ff", weight: 1,
+          fillColor: fav ? "#e91e63" : "#1e90ff", fillOpacity: 0.75,
+        });
+      }
       m.bindTooltip(`<b>${s.site_no}</b><br>${name}`, { sticky: true });
       m.on("click", () => selectSite(s));
       markersByNo.set(s.site_no, m);
       markers.addLayer(m);
     });
+    refreshGagePanel();
   });
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[c]));
+}
+
+function starIcon(color) {
+  return L.divIcon({
+    className: "star-marker",
+    html: `<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><polygon points="10,1 12.4,6.8 18.6,7.2 13.8,11.2 15.3,17.3 10,14 4.7,17.3 6.2,11.2 1.4,7.2 7.7,6.8" fill="${color}" stroke="white" stroke-width="1.2" stroke-linejoin="round"/></svg>`,
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+  });
 }
 
 const panel = document.getElementById("panel");

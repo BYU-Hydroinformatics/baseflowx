@@ -253,3 +253,39 @@ button.primary:hover { background: #1765cc; }
 
 #status { font-size: 13px; color: #555; min-height: 1em; }
 #status.error { color: #c62828; }
+
+/* Star marker for example/labeled gages */
+.star-marker { background: none; border: none; }
+
+/* Gage list panel (top-left Leaflet control) */
+.gage-list-panel {
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+  min-width: 190px;
+  max-width: 260px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+  pointer-events: auto;
+}
+.glp-section { padding: 10px 12px; }
+.glp-section + .glp-section { border-top: 1px solid #ebebeb; }
+.glp-header {
+  font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  color: #555; margin-bottom: 6px;
+}
+.glp-star { color: #ff9800; }
+.glp-heart { color: #e91e63; }
+.glp-list { list-style: none; margin: 0; padding: 0; max-height: 180px; overflow-y: auto; }
+.glp-item {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 5px 8px; border-radius: 3px; cursor: pointer;
+}
+.glp-item:hover { background: #e8f0fe; }
+.glp-no { font-weight: 700; color: #1a73e8; font-size: 13px; font-variant-numeric: tabular-nums; }
+.glp-nm {
+  color: #555; font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 230px;
+}
+.glp-empty { color: #aaa; font-size: 13px; padding: 2px 8px; font-style: italic; }
