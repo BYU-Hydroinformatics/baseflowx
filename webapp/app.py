@@ -1,4 +1,5 @@
 """Baseflow Explorer — Flask + Leaflet web app."""
+import json
 from datetime import date
 from pathlib import Path
 
@@ -13,9 +14,12 @@ app = Flask(__name__)
 
 DATA_DIR = Path(__file__).parent / "data"
 SITES_PATH = DATA_DIR / "nwis_dv_sites.parquet"
+DEFAULT_FAV_PATH = DATA_DIR / "default_fav.json"
+DEFAULT_EXAMPLES_PATH = DATA_DIR / "default_examples.json"
 SQMI_TO_KM2 = 2.58999
 
-LABELED_SITES = {"01013500"}
+DEFAULT_FAV_SITES: list[str] = json.loads(DEFAULT_FAV_PATH.read_text() if DEFAULT_FAV_PATH.exists() else "[]")
+LABELED_SITES: set[str] = set(json.loads(DEFAULT_EXAMPLES_PATH.read_text() if DEFAULT_EXAMPLES_PATH.exists() else "[]"))
 
 METHODS = {
     "lh":              {"label": "Lyne-Hollick"},
@@ -50,6 +54,7 @@ def index():
         version=bf.__version__,
         methods=METHODS,
         labeled_sites=list(LABELED_SITES),
+        default_fav_sites=DEFAULT_FAV_SITES,
     )
 
 

@@ -59,7 +59,7 @@ function toggleFavourite(siteNo) {
 function applyMarkerStyle(siteNo) {
   const m = markersByNo.get(siteNo);
   if (!m) return;
-  const fav = favourites.has(siteNo);
+  const fav = favourites.has(siteNo) || (window.DEFAULT_FAV_SITES && window.DEFAULT_FAV_SITES.has(siteNo));
   if (window.LABELED_SITES && window.LABELED_SITES.has(siteNo)) {
     m.setIcon(starIcon(fav ? "#e91e63" : "#ff9800"));
   } else {
@@ -96,8 +96,9 @@ function refreshGagePanel() {
   if (exList && window.LABELED_SITES) exList.innerHTML = renderList([...window.LABELED_SITES]);
   const favList = document.getElementById("glp-fav-list");
   if (favList) {
-    favList.innerHTML = favourites.size
-      ? renderList([...favourites])
+    const combined = [...new Set([...(window.DEFAULT_FAV_SITES || []), ...favourites])];
+    favList.innerHTML = combined.length
+      ? renderList(combined)
       : `<li class="glp-empty">None yet</li>`;
   }
 }
@@ -141,7 +142,7 @@ fetch("/sites.json")
     sites.forEach(s => {
       if (s.dec_lat_va == null || s.dec_long_va == null) return;
       sitesByNo.set(s.site_no, s);
-      const fav = favourites.has(s.site_no);
+      const fav = favourites.has(s.site_no) || (window.DEFAULT_FAV_SITES && window.DEFAULT_FAV_SITES.has(s.site_no));
       const labeled = window.LABELED_SITES && window.LABELED_SITES.has(s.site_no);
       const name = escapeHtml(s.station_nm || "");
       let m;

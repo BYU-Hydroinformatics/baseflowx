@@ -101,6 +101,7 @@
       {% endfor %}
     };
     window.LABELED_SITES = new Set({{ labeled_sites | tojson }});
+    window.DEFAULT_FAV_SITES = new Set({{ default_fav_sites | tojson }});
   </script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
