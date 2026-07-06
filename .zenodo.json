@@ -1,0 +1,28 @@
+{
+  "title": "baseflowx: An open-source Python package for baseflow separation",
+  "description": "baseflowx is an open-source Python package that implements 17 baseflow separation methods across four methodological paradigms (recursive digital filters, graphical hydrograph-partitioning, recession-based, and tracer-based approaches) behind a consistent interface, with built-in USGS data retrieval and a conductivity mass balance (CMB) module. It is the software accompanying the manuscript 'A literature review of baseflow separation algorithms and an accompanying computational package'.",
+  "upload_type": "software",
+  "license": "MIT",
+  "access_right": "open",
+  "keywords": [
+    "baseflow separation",
+    "digital filter",
+    "hydrograph separation",
+    "hydrology",
+    "streamflow",
+    "recession analysis",
+    "tracer",
+    "USGS",
+    "Python"
+  ],
+  "creators": [
+    { "name": "Li, Xueyi",            "affiliation": "Brigham Young University", "orcid": "0000-0002-2616-843X" },
+    { "name": "Jones, Norman L.",     "affiliation": "Brigham Young University", "orcid": "0000-0002-8267-1419" },
+    { "name": "Williams, Gustavious P.", "affiliation": "Brigham Young University", "orcid": "0000-0002-2781-0738" },
+    { "name": "Aghababaei, Amin",     "affiliation": "Brigham Young University", "orcid": "0000-0002-1104-4944" },
+    { "name": "Webster-Esho, Eniola", "affiliation": "University of Alabama", "orcid": "0009-0007-4709-981X" },
+    { "name": "van der Heijden, Ryan","affiliation": "University of Vermont", "orcid": "0000-0003-1320-9500" },
+    { "name": "Clement, T. Prabhakar","affiliation": "University of Alabama", "orcid": "0000-0002-7878-8139" },
+    { "name": "Rizzo, Donna M.",      "affiliation": "University of Vermont", "orcid": "0000-0003-4123-5028" }
+  ]
+}
