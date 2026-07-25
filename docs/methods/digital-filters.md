@@ -116,8 +116,17 @@ $$b_t = \left(a - A(1-a)\right) \cdot b_{t-1} + A(1-a) \cdot Q_{t-1}$$
 
 The parameter \(A\) represents the fraction of aquifer discharge that reaches the stream within one timestep. This lagged dependence on \(Q_{t-1}\) reflects the physical reality that groundwater recharge from a storm event does not instantaneously appear as baseflow; there is a finite travel time through the subsurface. Because of this lagged structure, the Furey-Gupta filter does not fit exactly into the standard general form and is implemented with its own recursion loop in baseflowx.
 
+!!! note "A note on the \(b_t \leq Q_t\) constraint"
+    Furey and Gupta (2001) deliberately left their original filter *unconstrained*: allowing \(b_t > Q_t\) was intentional, serving as a diagnostic signal that flags estimation error or physical inconsistency in the model rather than a result to be silently discarded. For consistency with the other filters in baseflowx, `furey()` applies the same \(b_t \leq Q_t\) clipping as every other method here. If you want to recover the original diagnostic behavior, pass `return_exceed=True` — this reports the number of timesteps at which the *unconstrained* filter would have produced \(b_t > Q_t\), without altering the returned baseflow values themselves.
+
 ```python
 b = baseflowx.furey(Q, a, A=0.5)
+
+# to see how often the unconstrained filter would have exceeded streamflow,
+# pass return_exceed=True: the exceed count is appended as the last element
+# of the returned array (so b has length len(Q) + 1 in this mode)
+b = baseflowx.furey(Q, a, A=0.5, return_exceed=True)
+n_exceed = b[-1]
 ```
 
 ![Furey-Gupta baseflow separation applied to the Fish River sample dataset.](../assets/figures/furey.png)
@@ -154,7 +163,7 @@ $$b_t = \beta_p \cdot b_{t-1} + \frac{1 - \beta_p}{2} \left( Q_t + Q_{t-1} \righ
 
 Nathan and McMahon (1990) recommended a default value of \(\beta_p = 0.925\) based on comparison with manual baseflow separation and tracer experiments. They also established the practice of applying the filter in multiple passes -- alternating forward and backward through the record -- to achieve greater smoothing. A single forward pass tends to overestimate baseflow on the rising limb and underestimate it on the falling limb; the backward pass compensates for this asymmetry.
 
-In baseflowx, `lh()` applies the standard two-pass (forward + backward) implementation, while `lh_multi()` allows a configurable number of passes. The three-pass protocol (\(n = 3\)) has become a *de facto* standard in Australian hydrology and is used internally by the BFlow method.
+In baseflowx, `lh()` applies the standard two-pass (forward + backward) implementation, while `lh_multi()` allows a configurable number of passes. The three-pass protocol (\(n = 3\)) is a longstanding convention in Australian hydrology and is used internally by the BFlow method, though as discussed below, it is not necessarily the most accurate choice.
 
 ```python
 # Standard 2-pass Lyne-Hollick
@@ -169,11 +178,15 @@ b_3pass = baseflowx.lh_multi(Q, beta=0.925, num_pass=3)
 
 Each additional pass further attenuates the high-frequency content of the baseflow signal, producing a smoother and lower baseflow estimate. The choice of number of passes is a modeling decision that depends on the application: fewer passes preserve more of the baseflow variability, while more passes produce a more conservative (lower) estimate of the baseflow contribution.
 
+!!! note "How many passes should I use?"
+    The three-pass protocol described above reflects the historical Australian convention, but it is not necessarily the best choice for accuracy. Zhang et al. (2017), evaluating the Lyne-Hollick filter against tracer-based baseflow estimates across five Eastern Australian catchments, found that going from one to two passes only marginally improved agreement with the tracer-based estimates, while further increasing the number of passes deteriorated performance, and recommended two passes as the preferred configuration. Treat `num_pass` as a tunable choice informed by your own catchment rather than defaulting to three passes.
+
 **References:**
 
 - Lyne, V. and Hollick, M. (1979). Stochastic time-variable rainfall-runoff modelling. *Inst. Eng. Aust. Natl. Conf.*, 89--93.
 - Nathan, R.J. and McMahon, T.A. (1990). Evaluation of automated techniques for base flow and recession analyses. *Water Resources Research*, 26(7), 1465--1473.
 - Spongberg, M.E. (2000). Spectral analysis of base flow separation with digital filters. *Water Resources Research*, 36(3), 745--752.
+- Zhang, J., Zhang, Y., Song, J. and Cheng, L. (2017). Evaluating relative merits of four baseflow separation methods in Eastern Australia. *Journal of Hydrology*, 549, 252--263.
 
 ### Chapman (1991)
 
