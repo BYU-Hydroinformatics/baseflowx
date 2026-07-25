@@ -111,6 +111,9 @@ strict = strict_baseflow(Q, quantile=0.9)
 
 The primary use of `strict_baseflow()` is as input to `recession_coefficient()`, which fits the recession constant from the identified baseflow periods. Together, these two functions form the standard workflow for estimating the recession parameter needed by most digital filters in baseflowx.
 
+!!! note "Percentile fit vs. log-log envelope fit"
+    `recession_coefficient()` estimates the recession constant \(a\) as the 5th percentile of \(-dQ/Q\) ratios at the identified strict baseflow points. This is a different convention from the log-log envelope-fitting approach sometimes used in the recession-analysis literature, which plots \(-dQ/dt\) against \(Q\) on logarithmic axes and fits a lower-envelope line to the pure baseflow points (see [bn77()](#brutsaert-nieber-drought-flow-identification-bn77) above). Both are established techniques serving related but distinct purposes: `recession_coefficient()` targets the single recession parameter used directly by baseflowx's recursive digital filters, while the envelope-fit approach characterizes the full storage-discharge relationship. `bn77()` identifies the pure baseflow points needed for the latter, but baseflowx does not perform the envelope-fitting step itself.
+
 ![Recession coefficient estimation using strict baseflow identification, showing the identified recession periods and the fitted 5th-percentile slope.](../assets/figures/recession_coefficient.png)
 
 An optional `ice` argument accepts a boolean mask for ice-affected periods, which are excluded from the strict baseflow designation. This is useful for high-latitude or high-elevation catchments where winter discharge records may be unreliable.
