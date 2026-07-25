@@ -32,6 +32,8 @@ If the catchment is affected by ice or snowpack, pass a boolean mask via the `ic
 
 This percentile-of-ratio approach is a different convention from the log-log envelope-fitting method used to characterize drainage timescales in some of the recession-analysis literature; see the [Percentile fit vs. log-log envelope fit](../methods/recession-analysis.md#strict-baseflow-identification) note in the Recession Analysis methods page for how the two relate.
 
+Note also that `recession_coefficient()` returns a single value fit over the entire record. Recession behavior can vary seasonally and diurnally as evapotranspiration and groundwater recharge rates change throughout the year, so in strongly seasonal climates a single annual estimate may not hold uniformly across the year. Users needing finer temporal resolution may wish to estimate the recession coefficient separately by season (e.g., by calling `recession_coefficient()` on seasonal subsets of `Q`).
+
 ## BFImax for the Eckhardt filter
 
 The Eckhardt (2005) filter requires two parameters: the recession coefficient \(a\) and the maximum baseflow index \(\text{BFI}_\text{max}\). While \(a\) characterizes the temporal dynamics of aquifer drainage, \(\text{BFI}_\text{max}\) controls the upper bound on the long-term baseflow fraction. Getting \(\text{BFI}_\text{max}\) right is critical because the Eckhardt filter's output is highly sensitive to this parameter -- it directly governs how much of the total streamflow volume is attributed to baseflow.
