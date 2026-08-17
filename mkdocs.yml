@@ -40,4 +40,5 @@ nav:
     - Parameter Estimation: guides/parameter-estimation.md
     - USGS Data Retrieval: guides/usgs-data.md
     - CMB Calibration Bridge: guides/cmb-calibration.md
+  - Validation: validation.md
   - API Reference: api.md

@@ -32,6 +32,10 @@ dev = [
     "pytest",
     "matplotlib",
 ]
+validation = [
+    "pytest",
+    "baseflow",
+]
 
 [tool.setuptools.packages.find]
 include = ["baseflowx*"]

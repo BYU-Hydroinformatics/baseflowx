@@ -27,38 +27,43 @@ def recession_coefficient(Q, strict):
     return np.exp(-1 / K)
 
 
-def param_calibrate(param_range, method, Q, b_LH, a):
+def param_calibrate(param_range, method, Q, a):
     """
-    Calibrates the parameters for a baseflow estimation method.
-    
+    Calibrates a baseflow filter's second parameter (e.g. Boughton's C,
+    Willems' w, Furey's A) against a recession-period / non-recession-period
+    fit to the log-transformed hydrograph.
+
     Args:
         param_range (numpy.ndarray): The range of parameter values to test.
-        method (callable): The baseflow estimation method to use.
+        method (callable): A baseflowx filter with signature
+            ``method(Q, a, param, return_exceed=True)``, e.g.
+            ``baseflowx.separation.boughton``.
         Q (numpy.ndarray): The discharge values.
-        b_LH (numpy.ndarray): The low-flow baseflow values.
-        a (float): The parameter for the baseflow estimation method.
-    
+        a (float): The recession coefficient held fixed during calibration.
+
     Returns:
         float: The optimal parameter value from the given range.
     """
     idx_rec = recession_period(Q)
     idx_oth = np.full(Q.shape[0], True)
     idx_oth[idx_rec] = False
-    return param_calibrate_jit(param_range, method, Q, b_LH, a, idx_rec, idx_oth)
+    return param_calibrate_jit(param_range, method, Q, a, idx_rec, idx_oth)
 
 
-def param_calibrate_jit(param_range, method, Q, b_LH, a, idx_rec, idx_oth):
+def param_calibrate_jit(param_range, method, Q, a, idx_rec, idx_oth):
     """
-    Calibrates the parameters for a baseflow estimation method.
-
-    The function takes in the range of parameter values to test, the baseflow estimation method, the discharge values, the low-flow baseflow values, and the parameter for the baseflow estimation method. It then calculates the recession period indices and other indices, and uses the `param_calibrate_jit` function to find the optimal parameter value from the given range.
+    Core calibration loop shared by `param_calibrate()`. See that function
+    for the calling convention; `idx_rec`/`idx_oth` are precomputed so this
+    inner loop can be called repeatedly (e.g. from a JIT-compiled context)
+    without recomputing the recession-period split each time.
 
     Args:
         param_range (numpy.ndarray): The range of parameter values to test.
         method (callable): The baseflow estimation method to use.
         Q (numpy.ndarray): The discharge values.
-        b_LH (numpy.ndarray): The low-flow baseflow values.
-        a (float): The parameter for the baseflow estimation method.
+        a (float): The recession coefficient held fixed during calibration.
+        idx_rec (numpy.ndarray): Indices within the recession period.
+        idx_oth (numpy.ndarray): Indices outside the recession period.
 
     Returns:
         float: The optimal parameter value from the given range.
@@ -67,7 +72,7 @@ def param_calibrate_jit(param_range, method, Q, b_LH, a, idx_rec, idx_oth):
     loss = np.zeros(param_range.shape)
     for i in range(param_range.shape[0]):
         p = param_range[i]
-        b_exceed = method(Q, b_LH, a, p, return_exceed=True)
+        b_exceed = method(Q, a, p, return_exceed=True)
         f_exd, logb = b_exceed[-1] / Q.shape[0], np.log1p(b_exceed[:-1])
 
         # NSE for recession part

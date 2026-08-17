@@ -143,6 +143,7 @@ dmypy.json
 data/
 !baseflowx/data/
 !webapp/data/
+!tests/data/
 logs/
 wandb/
 cache/
