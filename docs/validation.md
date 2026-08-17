@@ -228,6 +228,38 @@ gages for every method in the package:
   documented behavior in the
   [recession analysis guide](methods/recession-analysis.md).
 
+## CMB: checked against a synthetic mixture with a known answer
+
+The Conductivity Mass Balance method (`tracer.cmb()`) has no counterpart in
+Xie(2020) and no published per-gage result with reproducible end-members
+and period of record was found in the literature, so it had zero
+validation coverage after everything above. `tests/test_tracer_cmb.py`
+closes this the same way PART's core logic was checked: not against an
+external reference, but against a case where the correct answer is known
+by construction.
+
+A baseflow series and a runoff series are generated directly (so the true
+split is known), summed to a synthetic streamflow record, and the exact
+flow-weighted conductivity that a perfect two-endmember mixture would
+produce is computed from them. `cmb()` is then given only the resulting
+`(Q, SC)` pair — the same inputs it would receive from a real gage — and
+must recover the known-by-construction baseflow split. It does, to
+floating-point precision (relative tolerance 1e-10), which confirms the
+mixing equation itself is implemented correctly, along with the pure
+end-member edge cases (SC exactly at the baseflow or runoff end-member →
+100% or 0% baseflow), NaN propagation from missing SC, the `b ≤ Q`
+physical constraint under out-of-range SC noise, and that
+`calibrate_eckhardt_from_cmb()` recovers the same known BFI end-to-end.
+
+**What this does not establish**: whether CMB's *answer* is a good
+estimate of true baseflow for a real catchment. That is a fundamentally
+different question — CMB has real, uncalibrated free parameters of its
+own (the end-member conductivities) when applied to real data, and is a
+reference, not ground truth. It is addressed by the conductivity
+mass-balance benchmark study (screened gage pool, end-member sensitivity
+analysis, multi-scale scoring) elsewhere in this revision, not by this
+page.
+
 ## What this does and does not establish
 
 This page establishes that baseflowx's *code* correctly implements the
