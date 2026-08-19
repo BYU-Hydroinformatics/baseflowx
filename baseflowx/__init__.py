@@ -1,6 +1,6 @@
 """baseflowx — a comprehensive Python toolkit for baseflow separation."""
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 import csv
 from datetime import date
