@@ -18,7 +18,8 @@ _PARAM_CODES = {
 _NWIS_DV_URL = 'https://waterservices.usgs.gov/nwis/dv/'
 
 
-def fetch_usgs(site_id, start_date, end_date, parameter='discharge'):
+def fetch_usgs(site_id, start_date, end_date, parameter='discharge',
+               statistic='00003'):
     """Fetch daily values from the USGS NWIS Water Services API.
 
     Args:
@@ -28,6 +29,12 @@ def fetch_usgs(site_id, start_date, end_date, parameter='discharge'):
         parameter (str): Parameter to fetch. Accepts convenience names
             ('discharge', 'streamflow', 'sc', 'specific_conductance') or
             a raw NWIS parameter code (e.g., '00060'). Default 'discharge'.
+        statistic (str): NWIS statistic code selecting which daily series to
+            return. Default '00003' (daily mean), which is almost always what
+            is wanted. Other codes include '00001' (daily maximum) and '00002'
+            (daily minimum). NWIS publishes several statistic series for the
+            same parameter at many sites, so this must be specified explicitly
+            to obtain a well-defined series.
 
     Returns:
         dict: Dictionary with keys:
@@ -36,6 +43,7 @@ def fetch_usgs(site_id, start_date, end_date, parameter='discharge'):
             - 'units': str describing the measurement units
             - 'site_id': str echoing the requested site
             - 'parameter': str echoing the parameter code used
+            - 'statistic': str echoing the NWIS statistic code used
             - 'qualifiers': list of qualifier strings per timestep
 
     Raises:
@@ -62,6 +70,7 @@ def fetch_usgs(site_id, start_date, end_date, parameter='discharge'):
         'startDT': start_date,
         'endDT': end_date,
         'parameterCd': param_code,
+        'statCd': statistic,
         'siteStatus': 'all',
     }
     url = _NWIS_DV_URL + '?' + urlencode(params)
@@ -80,6 +89,20 @@ def fetch_usgs(site_id, start_date, end_date, parameter='discharge'):
             raise ValueError(f"No data returned for site {site_id}, "
                              f"parameter {param_code}, "
                              f"{start_date} to {end_date}.")
+        if len(ts) != 1:
+            # Should not happen once statCd is pinned, but never guess: an
+            # ambiguous response previously caused the first series (daily
+            # maximum) to be returned in place of the requested statistic.
+            found = []
+            for s in ts:
+                opts = s['variable'].get('options', {}).get('option', [])
+                found.append(next((o.get('optionCode') for o in opts
+                                   if o.get('name') == 'Statistic'), '?'))
+            raise ValueError(
+                f"NWIS returned {len(ts)} series for site {site_id}, "
+                f"parameter {param_code}, statistic {statistic} "
+                f"(statistic codes: {found}). Expected exactly one; "
+                f"specify `statistic` explicitly.")
         series = ts[0]
         values_list = series['values'][0]['value']
         unit = series['variable']['unit']['unitCode']
@@ -108,5 +131,6 @@ def fetch_usgs(site_id, start_date, end_date, parameter='discharge'):
         'units': unit,
         'site_id': site_id,
         'parameter': param_code,
+        'statistic': statistic,
         'qualifiers': qualifiers,
     }
